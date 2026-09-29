@@ -315,6 +315,16 @@ export async function fetchRenderedEmail(id: string): Promise<RenderedEmail> {
   return api<RenderedEmail>(`/drafts/${id}/render`);
 }
 
+export interface RenderedHtml {
+  subject: string;
+  html: string;
+  to: string[];
+}
+
+export async function fetchRenderedHtml(id: string): Promise<RenderedHtml> {
+  return api<RenderedHtml>(`/drafts/${id}/render-html`);
+}
+
 export interface Contingency {
   product: string;
   process: string;

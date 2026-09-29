@@ -1,12 +1,14 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, PaperPlaneTilt, UsersThree } from "phosphor-react-native";
+import { ArrowLeft, Copy, PaperPlaneTilt, UsersThree } from "phosphor-react-native";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, Text, TextInput, View } from "react-native";
+import { WebView } from "react-native-webview";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { fetchRenderedEmail, useDraft, useMarkSent, useUpdateDraft } from "@/src/api";
+import { fetchRenderedEmail, fetchRenderedHtml, useDraft, useMarkSent, useUpdateDraft } from "@/src/api";
+import * as Clipboard from "expo-clipboard";
 import { BrandMark } from "@/src/components/BrandMark";
 import { useToast } from "@/src/components/Toast";
 import { haptics } from "@/src/haptics";
@@ -32,10 +34,17 @@ export default function PreviewScreen() {
   const markSent = useMarkSent(draft?.incident_id ?? "");
   const [productTeam, setProductTeam] = useState("");
   const [sre, setSre] = useState("");
+  const [webHeight, setWebHeight] = useState(420);
 
   const { data: email, isLoading } = useQuery({
     queryKey: ["render", id],
     queryFn: () => fetchRenderedEmail(id),
+    enabled: !!id,
+  });
+
+  const { data: htmlData } = useQuery({
+    queryKey: ["render-html", id],
+    queryFn: () => fetchRenderedHtml(id),
     enabled: !!id,
   });
 
@@ -52,6 +61,14 @@ export default function PreviewScreen() {
       values: { ...draft.values, product_team: productTeam, sre },
     });
     qc.invalidateQueries({ queryKey: ["render", id] });
+    qc.invalidateQueries({ queryKey: ["render-html", id] });
+  };
+
+  const copyFormatted = async () => {
+    const data = htmlData ?? (await fetchRenderedHtml(id));
+    await Clipboard.setStringAsync(data.html, { inputFormat: Clipboard.StringFormat.HTML });
+    haptics.success();
+    toast("Formatted email copied — paste into the Outlook body");
   };
 
   const openInOutlook = async () => {
@@ -62,11 +79,21 @@ export default function PreviewScreen() {
     });
     const fresh = await fetchRenderedEmail(id);
     qc.setQueryData(["render", id], fresh);
+
+    // mailto can only carry plain text, so put the formatted template on the
+    // clipboard as rich HTML — the user pastes it into the Outlook body.
+    let copied = false;
+    try {
+      const freshHtml = await fetchRenderedHtml(id);
+      qc.setQueryData(["render-html", id], freshHtml);
+      await Clipboard.setStringAsync(freshHtml.html, { inputFormat: Clipboard.StringFormat.HTML });
+      copied = true;
+    } catch {}
+
     const to = fresh.to.join(";");
     const url =
       `mailto:${encodeURIComponent(to)}` +
-      `?subject=${encodeURIComponent(fresh.subject)}` +
-      `&body=${encodeURIComponent(fresh.body)}`;
+      `?subject=${encodeURIComponent(fresh.subject)}`;
     try {
       const supported = await Linking.canOpenURL(url);
       if (!supported) {
@@ -78,6 +105,7 @@ export default function PreviewScreen() {
       toast("Could not open email app", "error");
       return;
     }
+    if (copied) toast("Formatted template copied — paste it into the Outlook body");
 
     // Mark the incident update as sent and schedule the follow-up reminder.
     const incidentId = draft.incident_id;
@@ -102,7 +130,7 @@ export default function PreviewScreen() {
     }
   };
 
-  const footerHeight = 84;
+  const footerHeight = 140;
   const to = email?.to ?? [];
 
   return (
@@ -177,23 +205,44 @@ export default function PreviewScreen() {
             autoCorrect={false}
           />
 
+          <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>Formatted email preview</Text>
           <View style={styles.emailCard} testID="email-preview-card">
             <Text style={styles.subjectLabel}>SUBJECT</Text>
             <Text style={styles.subject} testID="preview-subject">
               {email.subject}
             </Text>
             <View style={styles.divider} />
-            <Text style={styles.body} testID="preview-body">
-              {email.body}
-            </Text>
+            {htmlData?.html ? (
+              <WebView
+                testID="preview-html"
+                originWhitelist={["*"]}
+                source={{ html: htmlData.html }}
+                style={{ height: webHeight, backgroundColor: "transparent", opacity: 0.99 }}
+                scrollEnabled={false}
+                showsVerticalScrollIndicator={false}
+                injectedJavaScript={
+                  "window.ReactNativeWebView && window.ReactNativeWebView.postMessage(String(document.body.scrollHeight));true;"
+                }
+                onMessage={(e) => {
+                  const h = Number(e.nativeEvent.data);
+                  if (h && Math.abs(h - webHeight) > 4) setWebHeight(h + (Platform.OS === "web" ? 0 : 8));
+                }}
+              />
+            ) : (
+              <ActivityIndicator color={colors.onSurface} style={{ marginVertical: spacing.xl }} />
+            )}
           </View>
         </KeyboardAwareScrollView>
       )}
 
       <View style={[styles.footer, { height: footerHeight + insets.bottom, paddingBottom: insets.bottom + spacing.sm }]}>
+        <Pressable testID="copy-formatted-btn" style={styles.copyBtn} onPress={copyFormatted} disabled={!htmlData}>
+          <Copy size={18} weight="bold" color={colors.onSurface} />
+          <Text style={styles.copyText}>Copy formatted email</Text>
+        </Pressable>
         <Pressable testID="open-outlook-btn" style={styles.sendBtn} onPress={openInOutlook} disabled={!email}>
           <PaperPlaneTilt size={18} weight="fill" color={colors.onBrandPrimary} />
-          <Text style={styles.sendText}>Open in Outlook</Text>
+          <Text style={styles.sendText}>Open in Outlook & paste</Text>
         </Pressable>
       </View>
     </View>
@@ -277,4 +326,17 @@ const useStyles = makeStyles((colors) => ({
     paddingVertical: spacing.md,
   },
   sendText: { fontSize: 16, fontWeight: "700", color: colors.onBrandPrimary },
+  copyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm + 2,
+    marginBottom: spacing.sm,
+  },
+  copyText: { fontSize: 15, fontWeight: "700", color: colors.onSurface },
 }));

@@ -1,0 +1,27 @@
+{
+  "summary": "Backend-only UTF-8 mojibake fix verification. Added new focused test file /app/backend/tests/test_render_html_utf8.py with 10 tests covering the bug + light regression. All 10 new tests PASS and full backend suite is 53/53 GREEN. Verified fix: GET /api/drafts/{id}/render-html now returns HTML whose <head> contains <meta charset=\"utf-8\"> AND <meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">. The rendered HTML contains the proper UTF-8 characters — middle-dot U+00B7 '·' in the header ('DTPS IT Operations Management · Major Incident Communication') and IMCR footer ('… · DTPS.IT.Continuity.Mgt.Team@…'), plus en-dash U+2013 '–' in the subject default ('Major Incident Communication – Customer Portal Performance Degradation – Investigating') — with ZERO mojibake bytes: 'Â·', 'â€', 'Ã¢' and U+FFFD REPLACEMENT CHAR are all absent from the response. Raw response bytes contain the correct UTF-8 sequences 0xC2 0xB7 and 0xE2 0x80 0x93. Custom subject with en-dashes set via PUT /api/drafts/{id} then re-rendered also stays clean. Regression endpoints (GET /api/templates=8, GET /api/countries≥20, POST /api/drafts, GET /api/drafts/{id}/render) all still work. No issues found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_render_html_utf8.py",
+    "/app/test_reports/pytest/pytest_render_html_utf8.xml",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "_render_html() in /app/backend/server.py lines 823-830 now correctly emits both <meta charset=\"utf-8\"> and <meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"> inside <head> — belt-and-suspenders approach is fine and matches Outlook-safe practice.",
+    "Consider also emitting the HTML with a leading UTF-8 BOM or setting Content-Type header on the HTTP response explicitly for the /render-html endpoint (currently JSON-wrapped, which is already UTF-8 by FastAPI default, so this is optional).",
+    "Non-blocking: server.py still uses deprecated @app.on_event startup/shutdown hooks (FastAPI recommends lifespan)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_render_html_utf8.py (new — 10 tests: 7 encoding + 3 regression)",
+    "/app/test_reports/pytest/pytest_render_html_utf8.xml (new)",
+    "/app/test_reports/pytest/pytest_results.xml (regenerated — 53/53 passed)"
+  ],
+  "success_rate": {"backend": "100% (53/53 including 10 new UTF-8 tests)", "frontend": "not tested (backend-only request per review_request)"},
+  "seed_data_creation": "Tests create one IMCR draft per class, cleaned up via DELETE in fixture teardown. No leftover data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Bug is fully fixed at the API layer. If a future agent needs to visually confirm inside the WebView preview, that requires Expo Go / device (WebView cannot render inside the container web preview per the review_request note). Backend payload correctness is definitive proof: middle-dot bytes 0xC2 0xB7 and en-dash bytes 0xE2 0x80 0x93 are present in raw response, no Latin-1 mojibake anywhere, and both charset meta tags are present in <head>.",
+  "rca_of_issue": "ROOT CAUSE: _render_html() emitted <!DOCTYPE html><html><head>…</head>… with NO <meta charset> declaration. React-Native-WebView, when asked to render a raw HTML string via source={{html}}, defaults to Latin-1 (ISO-8859-1) if no charset is declared inside the document. The template header ('DTPS IT Operations Management · Major Incident Communication', U+00B7) and the subject default ('… – Customer Portal … – Investigating', U+2013) are stored in the seed as Python str (UTF-8 in memory); when the WebView decoded the UTF-8 byte 0xC2 0xB7 as Latin-1, byte 0xC2 became 'Â' and 0xB7 became '·', producing 'Â·'. Similarly UTF-8 bytes 0xE2 0x80 0x93 (en-dash) decoded as Latin-1 became 'â€\u201d' ('â' + '€' + control). MITIGATION APPLIED: added <meta charset=\"utf-8\"> and <meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"> in _render_html(). REPRODUCTION: create any IMCR draft via POST /api/drafts, GET /api/drafts/{id}/render-html, and inspect html.encode('latin-1').decode('utf-8') vs raw — pre-fix WebView showed 'Â·' / 'â€', post-fix all Unicode code points render correctly. VERIFIED: byte-level assertions on raw response confirm 0xC2 0xB7 and 0xE2 0x80 0x93 are present and no 'Â·' / 'â€' / 'Ã¢' / U+FFFD sequences exist."
+}

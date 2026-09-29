@@ -23,7 +23,7 @@ from seed_data import (
     PLATFORM_DIRECTORS_CENTRAL,
     PRODUCTS,
 )
-from templates_seed import build_templates
+from templates_seed import STAGE_LABEL, STAGES, build_templates
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -635,6 +635,213 @@ async def render_draft(draft_id: str):
     body = _render_body(template, values)
     to = await _compute_recipients(doc)
     return {"subject": subject, "body": body, "to": to, "recipients": "; ".join(to)}
+
+
+# ---------------------------------------------------------------------------
+# HTML render — mirrors the corporate template layout / fonts / colours
+# ---------------------------------------------------------------------------
+FONT_STACK = "Aptos, Calibri, Helvetica, Arial, sans-serif"
+STAGE_COLOR = {
+    "IDENTIFIED": "#E29D6E",
+    "INVESTIGATING": "#E6A23C",
+    "RECOVERING": "#4FA6C7",
+    "MONITORING": "#7C8CA0",
+    "RESOLVED": "#4CAF7D",
+}
+
+
+def _esc(v: Any) -> str:
+    s = str(v or "")
+    return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace('"', "&quot;").replace("\n", "<br>"))
+
+
+def _val(values, key):
+    return str(values.get(key, "") or "").strip()
+
+
+def _field_label(template, key):
+    for s in template["sections"]:
+        for f in s["fields"]:
+            if f["key"] == key:
+                return f["label"]
+    return key
+
+
+def _box(label, value, border, extra=""):
+    return (
+        f'<td style="border:1px solid {border};border-radius:12px;padding:10px 18px;'
+        f'vertical-align:top;{extra}">'
+        f'<div style="font-size:11px;font-weight:700;letter-spacing:.5px;color:#8a8a8a;'
+        f'text-transform:uppercase">{_esc(label)}</div>'
+        f'<div style="font-size:14px;font-weight:600;color:#1f2937;margin-top:4px">{_esc(value)}</div>'
+        f'</td>'
+    )
+
+
+def _impact_row(label, value):
+    if not value:
+        return ""
+    return (
+        f'<tr>'
+        f'<td style="padding:9px 12px;border-bottom:1px solid #e8ecf0;font-size:13px;'
+        f'color:#6b7280;width:42%;vertical-align:top">{_esc(label)}</td>'
+        f'<td style="padding:9px 12px;border-bottom:1px solid #e8ecf0;font-size:13px;'
+        f'font-weight:600;color:#1f2937">{_esc(value)}</td>'
+        f'</tr>'
+    )
+
+
+def _render_html(template: Dict[str, Any], values: Dict[str, Any]) -> str:
+    category = template["category"]
+    stage = template["stage"]
+    accent = STAGE_COLOR.get(stage, "#E29D6E")
+    subject = _val(values, "subject") or template["name"]
+    parts: List[str] = []
+
+    # Header band
+    parts.append(
+        f'<div style="border-bottom:3px solid {accent};padding-bottom:12px;margin-bottom:18px">'
+        f'<div style="font-size:12px;font-weight:700;letter-spacing:.6px;color:#6b7280;'
+        f'text-transform:uppercase">{_esc(template.get("header",""))}</div>'
+        f'<div style="font-size:20px;font-weight:700;color:#111827;margin-top:6px">{_esc(subject)}</div>'
+        f'</div>'
+    )
+
+    # Status pipeline (IMCR only)
+    if category == "IMCR":
+        cells = ""
+        for st in STAGES:
+            active = st == stage
+            bg = accent if active else "#E8ECF0"
+            color = "#ffffff" if active else "#5b6b7b"
+            weight = "700" if active else "500"
+            cells += (
+                f'<td style="background-color:{bg};color:{color};font-weight:{weight};'
+                f'font-size:12px;text-align:center;padding:9px 4px;border-right:2px solid #ffffff">'
+                f'{_esc(STAGE_LABEL[st])}</td>'
+            )
+        parts.append(
+            f'<table style="width:100%;border-collapse:collapse;border-radius:8px;'
+            f'overflow:hidden;margin-bottom:16px"><tr>{cells}</tr></table>'
+        )
+
+    # Status headline band
+    headline = _val(values, "headline")
+    if headline:
+        parts.append(
+            f'<div style="background-color:{accent};color:#ffffff;font-size:16px;font-weight:600;'
+            f'padding:12px 16px;border-radius:10px;margin-bottom:16px">{_esc(headline)}</div>'
+        )
+
+    # Timing boxes
+    started = _val(values, "issue_started")
+    second_key = "resolved_at" if "resolved_at" in values else ("restored_at" if "restored_at" in values else "next_update")
+    second = _val(values, second_key)
+    if started or second:
+        cells = ""
+        if started:
+            cells += _box(_field_label(template, "issue_started"), started, "#8E0B0B")
+        if started and second:
+            cells += '<td style="width:14px"></td>'
+        if second:
+            cells += _box(_field_label(template, second_key), second, "#8a8a8a")
+        parts.append(f'<table style="width:100%;margin-bottom:16px"><tr>{cells}</tr></table>')
+
+    # Advisory note (non-IMCR)
+    note = _val(values, "note")
+    if note:
+        parts.append(
+            f'<div style="background-color:#FCFBF7;border:1px solid #FDF2D7;border-radius:10px;'
+            f'padding:12px 16px;margin-bottom:16px;font-size:13px;color:#6b5b3a;font-style:italic">{_esc(note)}</div>'
+        )
+
+    # Description / resolution
+    body = _val(values, "body")
+    no_action = _val(values, "no_action")
+    if body:
+        parts.append(
+            f'<div style="background-color:rgba(47,62,80,0.03);border-radius:10px;padding:14px 16px;'
+            f'margin-bottom:16px;font-size:14px;line-height:1.5;color:#1f2937">{_esc(body)}'
+            + (f'<div style="margin-top:8px;font-weight:600">{_esc(no_action)}</div>' if no_action else "")
+            + '</div>'
+        )
+
+    # Business impact / details table
+    impact_keys = [
+        ("business_application", "affected_service"),
+        ("business_process",),
+        ("countries",),
+        ("incident_ref",),
+        ("workaround",),
+    ]
+    rows = ""
+    for keys in impact_keys:
+        for k in keys:
+            if k in values:
+                raw = values.get(k, "")
+                v = _format_countries(str(raw or "")) if k == "countries" else str(raw or "").strip()
+                rows += _impact_row(_field_label(template, k), v)
+                break
+    if rows:
+        parts.append(
+            f'<div style="font-size:12px;font-weight:700;letter-spacing:.6px;color:#8a8a8a;'
+            f'text-transform:uppercase;margin-bottom:8px">Business Impact</div>'
+            f'<table style="width:100%;border-collapse:collapse;border:1px solid #e8ecf0;'
+            f'border-radius:10px;overflow:hidden;margin-bottom:16px">{rows}</table>'
+        )
+
+    # Contingency box
+    contingency = _val(values, "contingency")
+    if contingency:
+        parts.append(
+            f'<div style="background-color:#FCFBF7;border:1px solid #FDF2D7;border-radius:10px;'
+            f'padding:12px 16px;margin-bottom:16px">'
+            f'<div style="font-size:11px;font-weight:700;letter-spacing:.5px;color:#8a8a8a;'
+            f'text-transform:uppercase">{_esc(_field_label(template,"contingency"))}</div>'
+            f'<div style="font-size:14px;color:#1f2937;margin-top:4px">{_esc(contingency)}</div></div>'
+        )
+
+    # Contacts
+    contact_cells = ""
+    for k in ("crisis_lead", "vendors", "siam_contact"):
+        v = _val(values, k)
+        if v:
+            contact_cells += _box(_field_label(template, k), v, "#515151")
+            contact_cells += '<td style="width:14px"></td>'
+    if contact_cells:
+        parts.append(f'<table style="width:100%;margin-bottom:16px"><tr>{contact_cells}</tr></table>')
+
+    # Footer
+    footer = _esc(template.get("footer", ""))
+    parts.append(
+        f'<div style="border-top:1px solid #e8ecf0;margin-top:8px;padding-top:12px;'
+        f'font-size:12px;color:#6b7280;line-height:1.5">{footer}</div>'
+    )
+
+    inner = "".join(parts)
+    return (
+        f'<!DOCTYPE html><html><head><meta charset="utf-8">'
+        f'<meta http-equiv="Content-Type" content="text/html; charset=utf-8">'
+        f'<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f'</head><body style="margin:0;background-color:#f9f9f9;font-family:{FONT_STACK}">'
+        f'<div style="max-width:720px;margin:0 auto;background-color:#ffffff;padding:24px">{inner}</div>'
+        f'</body></html>'
+    )
+
+
+@api_router.get("/drafts/{draft_id}/render-html")
+async def render_draft_html(draft_id: str):
+    doc = await db.drafts.find_one({"id": draft_id, "deleted_at": None}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    template = await db.templates.find_one({"id": doc["template_id"]}, {"_id": 0})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    subject = _val(doc.get("values", {}), "subject") or doc.get("template_name", "")
+    html = _render_html(template, doc.get("values", {}))
+    to = await _compute_recipients(doc)
+    return {"subject": subject, "html": html, "to": to}
 
 
 # ---------------------------------------------------------------------------

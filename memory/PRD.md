@@ -72,3 +72,12 @@ communication is opened in the device email app (Outlook/Mail) to send.
 - Auto-fill contingency: selecting a Business Application in compose calls GET /contingency?product= and fills business_process (=process), crisis_lead (=owner), contingency (=failed system) — only for UNLOCKED sections; shows a toast.
 - Country picker rebuilt as header→BottomSheetScrollView→footer (no overlap); each country is an individual tick row.
 - Stage order/content corrected per user: order is now IDENTIFIED → INVESTIGATING → RECOVERING → MONITORING → RESOLVED, and the Identified/Investigating headline messages were swapped (Identified = "We are aware of an issue and are actively investigating."; Investigating = "The root cause has been identified…"). Applied to STAGES + both frontend STAGE_ORDER arrays + IMCR/NONIMCR headline seeds.
+
+## Iteration 5 (2026-06) — Formatted (HTML) email matching the corporate template
+- Backend GET /drafts/{id}/render-html builds a styled HTML email mirroring the uploaded .oft templates: font stack Aptos/Calibri/Helvetica, status pipeline row (active stage coloured), status headline band, ISSUE STARTED box (dark-red border) + NEXT UPDATE/RESOLVED box (grey border), tinted description block, Business Impact bordered table, cream contingency box, bordered Crisis Lead/Vendors boxes, footer. Colours taken from the templates (#f9f9f9 page, #E8ECF0 pipeline, #8E0B0B, #FDF2D7/#FCFBF7, #515151). STAGE_COLOR map per stage.
+- Preview now renders the HTML in a react-native-webview (dynamic height via injected scrollHeight); web preview shows a "not supported" placeholder (WebView is native-only).
+- Sending: mailto cannot carry HTML, so "Open in Outlook & paste" copies the formatted HTML to the clipboard as rich text (expo-clipboard StringFormat.HTML) and opens Outlook with To + Subject prefilled; user pastes the styled template into the body. Also a standalone "Copy formatted email" button.
+- New dep: react-native-webview, expo-clipboard.
+
+## Iteration 6 (2026-06) — Template encoding fix
+- Fixed UTF-8 mojibake in rendered template: header middle-dot '·' showed as 'Â·' and subject en-dash '–' as 'â€"'. Root cause: generated HTML had no charset declaration so WebView decoded UTF-8 as Latin-1. Added <meta charset="utf-8"> + Content-Type meta to _render_html() head in server.py. Verified 53/53 backend tests, byte-level clean.
