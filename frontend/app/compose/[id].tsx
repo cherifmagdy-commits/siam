@@ -24,6 +24,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   TemplateField,
   TemplateSection,
+  fetchContingency,
+  useCountries,
+  useCreateCountry,
   useCreateProcess,
   useCreateProduct,
   useDraft,
@@ -31,6 +34,7 @@ import {
   useProducts,
   useUpdateDraft,
 } from "@/src/api";
+import { CountrySheet, CountrySheetRef } from "@/src/components/CountrySheet";
 import { SelectSheet, SelectSheetRef } from "@/src/components/SelectSheet";
 import { StatusPill } from "@/src/components/StatusPill";
 import { useToast } from "@/src/components/Toast";
@@ -49,14 +53,18 @@ export default function ComposeScreen() {
   const updateDraft = useUpdateDraft(id);
   const { data: products } = useProducts();
   const { data: processes } = useProcesses();
+  const { data: countries } = useCountries();
   const createProduct = useCreateProduct();
   const createProcess = useCreateProcess();
+  const createCountry = useCreateCountry();
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [validations, setValidations] = useState<Record<string, boolean>>({});
   const [activeField, setActiveField] = useState<{ key: string; source: "products" | "processes" } | null>(null);
+  const [activeCountryKey, setActiveCountryKey] = useState<string | null>(null);
 
   const sheetRef = useRef<SelectSheetRef>(null);
+  const countrySheetRef = useRef<CountrySheetRef>(null);
   const hydrated = useRef(false);
   const stateRef = useRef({ values, validations });
   stateRef.current = { values, validations };
@@ -88,6 +96,14 @@ export default function ComposeScreen() {
     };
   }, []);
 
+  // Debounced autosave — decoupled from validate/unlock so rapid taps never
+  // trigger a mutate/refetch race that drops a lock.
+  useEffect(() => {
+    if (!hydrated.current) return;
+    const t = setTimeout(() => save(stateRef.current), 700);
+    return () => clearTimeout(t);
+  }, [values, validations, save]);
+
   const setValue = (key: string, val: string) =>
     setValues((prev) => ({ ...prev, [key]: val }));
 
@@ -100,32 +116,77 @@ export default function ComposeScreen() {
   const progress = total > 0 ? validatedCount / total : 0;
 
   const validateSection = (section: TemplateSection) => {
-    const missing = section.fields.some((f) => !String(values[f.key] ?? "").trim());
+    const current = stateRef.current.values;
+    const missing = section.fields.some((f) => !String(current[f.key] ?? "").trim());
     if (missing) {
       haptics.warning();
       toast("Fill in all fields before validating", "error");
       return;
     }
     haptics.success();
-    setValidations((prev) => {
-      const next = { ...prev, [section.key]: true };
-      queueMicrotask(() => save({ values: stateRef.current.values, validations: next }));
-      return next;
-    });
+    setValidations((prev) => ({ ...prev, [section.key]: true }));
   };
 
   const unlockSection = (section: TemplateSection) => {
     haptics.light();
-    setValidations((prev) => {
-      const next = { ...prev, [section.key]: false };
-      queueMicrotask(() => save({ values: stateRef.current.values, validations: next }));
-      return next;
-    });
+    setValidations((prev) => ({ ...prev, [section.key]: false }));
   };
 
   const openDropdown = (field: TemplateField) => {
     setActiveField({ key: field.key, source: field.source! });
     setTimeout(() => sheetRef.current?.open(), 0);
+  };
+
+  // Map each field key to its section key, to skip auto-fill on locked sections.
+  const fieldSection = useMemo(() => {
+    const m: Record<string, string> = {};
+    sections.forEach((s) => s.fields.forEach((f) => (m[f.key] = s.key)));
+    return m;
+  }, [sections]);
+
+  // When a Business Application is picked, pull its process / contingency owner
+  // from the contingency sheet and fill the matching fields (only if unlocked).
+  const autofillFromContingency = async (product: string) => {
+    try {
+      const rows = await fetchContingency(product);
+      if (!rows.length) return;
+      const row = rows[0];
+      const candidates: [string, string][] = [];
+      if (row.process) candidates.push(["business_process", row.process]);
+      if (row.owner) candidates.push(["crisis_lead", row.owner]);
+      if (row.failed_system) candidates.push(["contingency", `Failed system: ${row.failed_system}`]);
+      const locks = stateRef.current.validations;
+      const apply = candidates.filter(([k]) => fieldSection[k] && !locks[fieldSection[k]]);
+      if (!apply.length) return;
+      setValues((prev) => {
+        const next = { ...prev };
+        apply.forEach(([k, v]) => (next[k] = v));
+        return next;
+      });
+      haptics.success();
+      toast(`Auto-filled ${apply.length} field${apply.length > 1 ? "s" : ""} from contingency data`);
+    } catch {}
+  };
+
+  const parseCountries = (raw?: string): string[] => {
+    try {
+      const arr = JSON.parse(raw || "[]");
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const openCountries = (key: string) => {
+    setActiveCountryKey(key);
+    setTimeout(() => countrySheetRef.current?.open(), 0);
+  };
+
+  const toggleCountry = (name: string) => {
+    if (!activeCountryKey) return;
+    const cur = parseCountries(values[activeCountryKey]);
+    const next = cur.includes(name) ? cur.filter((x) => x !== name) : [...cur, name];
+    setValue(activeCountryKey, JSON.stringify(next));
   };
 
   const onSend = () => {
@@ -198,8 +259,29 @@ export default function ComposeScreen() {
                   <Text style={styles.fieldLabel}>{field.label}</Text>
                   {locked ? (
                     <Text style={styles.lockedValue} testID={`locked-value-${field.key}`}>
-                      {String(values[field.key] ?? "") || "—"}
+                      {field.type === "countries"
+                        ? parseCountries(values[field.key]).join(", ") || "—"
+                        : String(values[field.key] ?? "") || "—"}
                     </Text>
+                  ) : field.type === "countries" ? (
+                    <Pressable
+                      testID={`countries-${field.key}`}
+                      style={styles.dropdown}
+                      onPress={() => openCountries(field.key)}
+                    >
+                      <Text
+                        style={[
+                          styles.dropdownText,
+                          parseCountries(values[field.key]).length === 0 && { color: colors.muted },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {parseCountries(values[field.key]).length
+                          ? `${parseCountries(values[field.key]).length} selected · ${parseCountries(values[field.key]).join(", ")}`
+                          : field.placeholder || "Select countries"}
+                      </Text>
+                      <CaretDown size={16} color={colors.muted} />
+                    </Pressable>
                   ) : field.type === "dropdown" ? (
                     <Pressable
                       testID={`dropdown-${field.key}`}
@@ -298,12 +380,24 @@ export default function ComposeScreen() {
         options={dropdownOptions}
         selected={activeField ? values[activeField.key] : undefined}
         onSelect={(v) => {
-          if (activeField) setValue(activeField.key, v);
+          if (!activeField) return;
+          setValue(activeField.key, v);
+          if (activeField.source === "products") autofillFromContingency(v);
         }}
         onCreate={async (name) => {
           if (!activeField) return;
           if (activeField.source === "products") await createProduct.mutateAsync({ name, platform: "Custom" });
           else await createProcess.mutateAsync({ name });
+        }}
+      />
+
+      <CountrySheet
+        ref={countrySheetRef}
+        options={(countries ?? []).map((c) => c.name)}
+        selected={activeCountryKey ? parseCountries(values[activeCountryKey]) : []}
+        onToggle={toggleCountry}
+        onCreate={async (name) => {
+          await createCountry.mutateAsync({ name });
         }}
       />
     </View>

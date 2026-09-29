@@ -11,7 +11,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Template, useCreateDraft, useTemplates } from "@/src/api";
+import { Template, useCreateIncident, useTemplates } from "@/src/api";
+import { BrandMark } from "@/src/components/BrandMark";
 import { StatusPill } from "@/src/components/StatusPill";
 import { useToast } from "@/src/components/Toast";
 import { haptics } from "@/src/haptics";
@@ -19,8 +20,8 @@ import { fontSize, makeStyles, radius, spacing, Stage, useTheme } from "@/src/th
 import { useTabBottomPadding } from "@/src/useTabBottomPadding";
 
 const STAGE_ORDER: Stage[] = [
-  "INVESTIGATING",
   "IDENTIFIED",
+  "INVESTIGATING",
   "RECOVERING",
   "MONITORING",
   "RESOLVED",
@@ -39,7 +40,7 @@ export default function TemplatesScreen() {
 
   const [category, setCategory] = useState<"IMCR" | "NON_IMCR">("IMCR");
   const { data: templates, isLoading, isError, refetch } = useTemplates();
-  const createDraft = useCreateDraft();
+  const createIncident = useCreateIncident();
 
   const grouped = useMemo(() => {
     const list = (templates ?? []).filter((t) => t.category === category);
@@ -53,13 +54,13 @@ export default function TemplatesScreen() {
     );
   }, [templates, category]);
 
-  const startDraft = async (template: Template) => {
+  const startIncident = async (template: Template) => {
     haptics.selection();
     try {
-      const draft = await createDraft.mutateAsync(template.id);
+      const { draft } = await createIncident.mutateAsync(template.id);
       router.push(`/compose/${draft.id}`);
     } catch (e: any) {
-      toast(e?.message ?? "Could not start draft", "error");
+      toast(e?.message ?? "Could not start incident", "error");
     }
   };
 
@@ -69,10 +70,11 @@ export default function TemplatesScreen() {
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <View style={styles.heroRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.kicker}>DTPS IT OPERATIONS</Text>
+            <BrandMark />
             <Text style={styles.title} testID="templates-title">
               Incident Templates
             </Text>
+            <Text style={styles.kicker}>DTPS IT OPERATIONS</Text>
           </View>
           <Image source={{ uri: HERO }} style={styles.heroImg} contentFit="cover" transition={200} />
         </View>
@@ -124,13 +126,13 @@ export default function TemplatesScreen() {
                   key={t.id}
                   testID={`template-card-${t.id}`}
                   style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-                  onPress={() => startDraft(t)}
-                  disabled={createDraft.isPending}
+                  onPress={() => startIncident(t)}
+                  disabled={createIncident.isPending}
                 >
                   <View style={styles.cardBody}>
                     <StatusPill stage={t.stage} small />
                     <Text style={styles.cardTitle}>{t.name}</Text>
-                    <Text style={styles.cardSub}>{t.sections.length} sections to validate</Text>
+                    <Text style={styles.cardSub}>Start a new incident thread</Text>
                   </View>
                   <CaretRight size={18} color={colors.muted} />
                 </Pressable>

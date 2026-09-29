@@ -50,18 +50,46 @@ export interface Process {
   custom: boolean;
 }
 
+export interface Country {
+  id: string;
+  name: string;
+  cluster: string;
+  country_dtps: string[];
+  country_dl: string[];
+  dwt_leader: string[];
+  platform_directors: string[];
+  custom: boolean;
+}
+
 export interface Draft {
   id: string;
   template_id: string;
   template_name: string;
   category: "IMCR" | "NON_IMCR";
   stage: Template["stage"];
+  incident_id?: string;
+  sequence?: number;
+  sent_at?: string | null;
   values: Record<string, string>;
   validations: Record<string, boolean>;
   recipients: string;
   updated_at: string;
   progress?: { validated: number; total: number };
   template?: Template;
+}
+
+export interface Incident {
+  id: string;
+  title: string;
+  category: "IMCR" | "NON_IMCR";
+  current_stage: Template["stage"];
+  status: "OPEN" | "RESOLVED";
+  last_sent_at: string | null;
+  next_update_at: string | null;
+  updated_at: string;
+  created_at: string;
+  update_count?: number;
+  updates?: Draft[];
 }
 
 // ---------------------------------------------------------------------------
@@ -142,6 +170,30 @@ export function useDeleteProcess() {
 }
 
 // ---------------------------------------------------------------------------
+// Countries (crisis distribution list)
+// ---------------------------------------------------------------------------
+export function useCountries() {
+  return useQuery({ queryKey: ["countries"], queryFn: () => api<Country[]>("/countries") });
+}
+
+export function useCreateCountry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { name: string }) =>
+      api<Country>("/countries", { method: "POST", body: JSON.stringify(payload) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["countries"] }),
+  });
+}
+
+export function useDeleteCountry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/countries/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["countries"] }),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Drafts
 // ---------------------------------------------------------------------------
 export function useDrafts() {
@@ -190,11 +242,88 @@ export function useDeleteDraft() {
 export interface RenderedEmail {
   subject: string;
   body: string;
+  to: string[];
   recipients: string;
+}
+
+// ---------------------------------------------------------------------------
+// Incidents
+// ---------------------------------------------------------------------------
+export function useIncidents() {
+  return useQuery({ queryKey: ["incidents"], queryFn: () => api<Incident[]>("/incidents") });
+}
+
+export function useIncident(id: string) {
+  return useQuery({
+    queryKey: ["incident", id],
+    queryFn: () => api<Incident>(`/incidents/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useCreateIncident() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (templateId: string) =>
+      api<{ incident: Incident; draft: Draft }>("/incidents", {
+        method: "POST",
+        body: JSON.stringify({ template_id: templateId }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["incidents"] }),
+  });
+}
+
+export function useCreateUpdate(incidentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (templateId: string) =>
+      api<Draft>(`/incidents/${incidentId}/updates`, {
+        method: "POST",
+        body: JSON.stringify({ template_id: templateId }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["incidents"] });
+      qc.invalidateQueries({ queryKey: ["incident", incidentId] });
+    },
+  });
+}
+
+export function useMarkSent(incidentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (draftId: string) =>
+      api<Incident>(`/incidents/${incidentId}/mark-sent`, {
+        method: "POST",
+        body: JSON.stringify({ draft_id: draftId }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["incidents"] });
+      qc.invalidateQueries({ queryKey: ["incident", incidentId] });
+    },
+  });
+}
+
+export function useDeleteIncident() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/incidents/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["incidents"] }),
+  });
 }
 
 export async function fetchRenderedEmail(id: string): Promise<RenderedEmail> {
   return api<RenderedEmail>(`/drafts/${id}/render`);
+}
+
+export interface Contingency {
+  product: string;
+  process: string;
+  failed_system: string;
+  owner: string;
+}
+
+export async function fetchContingency(product: string): Promise<Contingency[]> {
+  return api<Contingency[]>(`/contingency?product=${encodeURIComponent(product)}`);
 }
 
 // ---------------------------------------------------------------------------

@@ -13,20 +13,24 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   importExcel,
+  useCreateCountry,
   useCreateProcess,
   useCreateProduct,
+  useCountries,
+  useDeleteCountry,
   useDeleteProcess,
   useDeleteProduct,
   useProcesses,
   useProducts,
 } from "@/src/api";
+import { BrandMark } from "@/src/components/BrandMark";
 import { useToast } from "@/src/components/Toast";
 import { haptics } from "@/src/haptics";
 import { queryClient } from "@/src/query-client";
 import { fontSize, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { useTabBottomPadding } from "@/src/useTabBottomPadding";
 
-type Tab = "products" | "processes";
+type Tab = "products" | "processes" | "countries";
 
 export default function LibraryScreen() {
   const insets = useSafeAreaInsets();
@@ -41,13 +45,16 @@ export default function LibraryScreen() {
 
   const { data: products, isLoading: pLoading } = useProducts();
   const { data: processes, isLoading: prLoading } = useProcesses();
+  const { data: countries, isLoading: cLoading } = useCountries();
   const createProduct = useCreateProduct();
   const createProcess = useCreateProcess();
+  const createCountry = useCreateCountry();
   const deleteProduct = useDeleteProduct();
   const deleteProcess = useDeleteProcess();
+  const deleteCountry = useDeleteCountry();
 
-  const items = tab === "products" ? products ?? [] : processes ?? [];
-  const loading = tab === "products" ? pLoading : prLoading;
+  const items = tab === "products" ? products ?? [] : tab === "processes" ? processes ?? [] : countries ?? [];
+  const loading = tab === "products" ? pLoading : tab === "processes" ? prLoading : cLoading;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -66,7 +73,8 @@ export default function LibraryScreen() {
     haptics.medium();
     try {
       if (tab === "products") await createProduct.mutateAsync({ name, platform: "Custom" });
-      else await createProcess.mutateAsync({ name });
+      else if (tab === "processes") await createProcess.mutateAsync({ name });
+      else await createCountry.mutateAsync({ name });
       setQuery("");
       toast(`Added “${name}”`);
     } catch (e: any) {
@@ -78,7 +86,8 @@ export default function LibraryScreen() {
     haptics.warning();
     try {
       if (tab === "products") await deleteProduct.mutateAsync(id);
-      else await deleteProcess.mutateAsync(id);
+      else if (tab === "processes") await deleteProcess.mutateAsync(id);
+      else await deleteCountry.mutateAsync(id);
       toast(`Removed “${name}”`);
     } catch (e: any) {
       toast(e?.message ?? "Could not remove", "error");
@@ -114,10 +123,11 @@ export default function LibraryScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+        <BrandMark compact />
         <Text style={styles.title} testID="library-title">
           Library
         </Text>
-        <Text style={styles.subtitle}>Applications & business processes</Text>
+        <Text style={styles.subtitle}>Applications, processes & countries</Text>
       </View>
 
       <FlatList
@@ -154,8 +164,9 @@ export default function LibraryScreen() {
 
             {/* Segmented */}
             <View style={styles.segment}>
-              {(["products", "processes"] as const).map((t) => {
+              {(["products", "processes", "countries"] as const).map((t) => {
                 const active = tab === t;
+                const label = t === "products" ? "Applications" : t === "processes" ? "Processes" : "Countries";
                 return (
                   <Pressable
                     key={t}
@@ -167,9 +178,7 @@ export default function LibraryScreen() {
                       setQuery("");
                     }}
                   >
-                    <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                      {t === "products" ? "Applications" : "Processes"}
-                    </Text>
+                    <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
                   </Pressable>
                 );
               })}
@@ -183,7 +192,13 @@ export default function LibraryScreen() {
                   testID="library-search-input"
                   value={query}
                   onChangeText={setQuery}
-                  placeholder={tab === "products" ? "Search or add application…" : "Search or add process…"}
+                  placeholder={
+                    tab === "products"
+                      ? "Search or add application…"
+                      : tab === "processes"
+                        ? "Search or add process…"
+                        : "Search or add country…"
+                  }
                   placeholderTextColor={colors.muted}
                   style={styles.searchInput}
                   autoCapitalize="words"
@@ -207,6 +222,8 @@ export default function LibraryScreen() {
               <Text style={styles.rowText}>{item.name}</Text>
               {"platform" in item && (item as any).platform ? (
                 <Text style={styles.rowSub}>{(item as any).platform}</Text>
+              ) : "cluster" in item && (item as any).cluster ? (
+                <Text style={styles.rowSub}>Cluster {(item as any).cluster}</Text>
               ) : null}
             </View>
             <Pressable

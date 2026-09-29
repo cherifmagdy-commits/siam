@@ -1,19 +1,28 @@
 import io
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import openpyxl
+import httpx
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, HTTPException, UploadFile, File
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
-from seed_data import BUSINESS_PROCESSES, CONTINGENCY_MAP, PRODUCTS
+from seed_data import (
+    BUSINESS_PROCESSES,
+    CENTRAL_DTPS,
+    CONTINGENCY_MAP,
+    COUNTRIES,
+    PLATFORM_DIRECTORS_CENTRAL,
+    PRODUCTS,
+)
 from templates_seed import build_templates
 
 ROOT_DIR = Path(__file__).parent
@@ -53,8 +62,35 @@ class ProcessCreate(BaseModel):
     name: str
 
 
+class CountryCreate(BaseModel):
+    name: str
+    cluster: str = "Custom"
+    country_dtps: List[str] = []
+    country_dl: List[str] = []
+    dwt_leader: List[str] = []
+    platform_directors: List[str] = []
+
+
 class DraftCreate(BaseModel):
     template_id: str
+
+
+class IncidentCreate(BaseModel):
+    template_id: str
+
+
+class UpdateCreate(BaseModel):
+    template_id: str
+
+
+class MarkSent(BaseModel):
+    draft_id: str
+
+
+class RegisterPushBody(BaseModel):
+    user_id: str
+    platform: str
+    device_token: str
 
 
 class DraftUpdate(BaseModel):
@@ -96,6 +132,18 @@ async def seed_database():
         if docs:
             await db.contingency_map.insert_many(docs)
         logger.info("Seeded %d contingency map rows", len(docs))
+
+    if await db.countries.count_documents({}) == 0:
+        docs = [
+            {"id": new_id(), "name": c["name"], "cluster": c["cluster"],
+             "country_dtps": c["country_dtps"], "country_dl": c["country_dl"],
+             "dwt_leader": c["dwt_leader"], "platform_directors": c["platform_directors"],
+             "custom": False, "deleted_at": None, "created_at": now_iso()}
+            for c in COUNTRIES
+        ]
+        if docs:
+            await db.countries.insert_many(docs)
+        logger.info("Seeded %d countries", len(docs))
 
     # Templates: reseed every startup so structure changes propagate.
     templates = build_templates()
@@ -177,6 +225,42 @@ async def delete_process(item_id: str):
     res = await db.business_processes.update_one({"id": item_id}, {"$set": {"deleted_at": now_iso()}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Process not found")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Countries (crisis distribution list)
+# ---------------------------------------------------------------------------
+@api_router.get("/countries")
+async def list_countries():
+    cursor = db.countries.find({"deleted_at": None}, {"_id": 0}).sort("name", 1)
+    return await cursor.to_list(500)
+
+
+@api_router.post("/countries")
+async def create_country(payload: CountryCreate):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    existing = await db.countries.find_one({"name": name, "deleted_at": None})
+    if existing:
+        existing.pop("_id", None)
+        return existing
+    doc = {
+        "id": new_id(), "name": name, "cluster": payload.cluster.strip() or "Custom",
+        "country_dtps": payload.country_dtps, "country_dl": payload.country_dl,
+        "dwt_leader": payload.dwt_leader, "platform_directors": payload.platform_directors,
+        "custom": True, "deleted_at": None, "created_at": now_iso(),
+    }
+    await db.countries.insert_one(dict(doc))
+    return doc
+
+
+@api_router.delete("/countries/{item_id}")
+async def delete_country(item_id: str):
+    res = await db.countries.update_one({"id": item_id}, {"$set": {"deleted_at": now_iso()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Country not found")
     return {"ok": True}
 
 
@@ -281,6 +365,189 @@ async def delete_draft(draft_id: str):
     return {"ok": True}
 
 
+# ---------------------------------------------------------------------------
+# Incidents (a linked thread of updates through the stages)
+# ---------------------------------------------------------------------------
+def _new_draft_doc(template, incident_id, sequence, prefill):
+    values = _default_values(template)
+    if prefill:
+        for k in list(values.keys()):
+            pv = prefill.get(k)
+            if pv not in (None, ""):
+                values[k] = pv
+        for extra in ("product_team", "sre"):
+            if prefill.get(extra):
+                values[extra] = prefill[extra]
+    return {
+        "id": new_id(),
+        "template_id": template["id"],
+        "template_name": template["name"],
+        "category": template["category"],
+        "stage": template["stage"],
+        "incident_id": incident_id,
+        "sequence": sequence,
+        "values": values,
+        "validations": {},
+        "recipients": "",
+        "deleted_at": None,
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+
+
+def _incident_title(values, template):
+    return str(values.get("title") or values.get("subject") or template["name"]).strip()
+
+
+@api_router.post("/incidents")
+async def create_incident(payload: IncidentCreate):
+    template = await db.templates.find_one({"id": payload.template_id}, {"_id": 0})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    incident_id = new_id()
+    draft = _new_draft_doc(template, incident_id, 1, None)
+    await db.drafts.insert_one(dict(draft))
+    inc = {
+        "id": incident_id,
+        "title": _incident_title(draft["values"], template),
+        "category": template["category"],
+        "current_stage": template["stage"],
+        "status": "OPEN",
+        "last_sent_at": None,
+        "next_update_at": None,
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+        "deleted_at": None,
+    }
+    await db.incidents.insert_one(dict(inc))
+    return {"incident": inc, "draft": draft}
+
+
+@api_router.post("/incidents/{incident_id}/updates")
+async def create_update(incident_id: str, payload: UpdateCreate):
+    inc = await db.incidents.find_one({"id": incident_id, "deleted_at": None})
+    if not inc:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    template = await db.templates.find_one({"id": payload.template_id}, {"_id": 0})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    latest = await db.drafts.find(
+        {"incident_id": incident_id, "deleted_at": None}
+    ).sort("sequence", -1).to_list(1)
+    prefill = latest[0]["values"] if latest else None
+    seq = (latest[0]["sequence"] + 1) if latest else 1
+    draft = _new_draft_doc(template, incident_id, seq, prefill)
+    await db.drafts.insert_one(dict(draft))
+    await db.incidents.update_one({"id": incident_id}, {"$set": {"updated_at": now_iso()}})
+    return draft
+
+
+@api_router.get("/incidents")
+async def list_incidents():
+    cursor = db.incidents.find({"deleted_at": None}, {"_id": 0}).sort("updated_at", -1)
+    incidents = await cursor.to_list(500)
+    for inc in incidents:
+        inc["update_count"] = await db.drafts.count_documents(
+            {"incident_id": inc["id"], "deleted_at": None}
+        )
+    return incidents
+
+
+@api_router.get("/incidents/{incident_id}")
+async def get_incident(incident_id: str):
+    inc = await db.incidents.find_one({"id": incident_id, "deleted_at": None}, {"_id": 0})
+    if not inc:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    cursor = db.drafts.find({"incident_id": incident_id, "deleted_at": None}, {"_id": 0}).sort("sequence", 1)
+    drafts = await cursor.to_list(200)
+    for d in drafts:
+        template = await db.templates.find_one({"id": d["template_id"]}, {"_id": 0})
+        total = len(template["sections"]) if template else 0
+        validated = sum(1 for v in d.get("validations", {}).values() if v)
+        d["progress"] = {"validated": validated, "total": total}
+    inc["updates"] = drafts
+    return inc
+
+
+@api_router.post("/incidents/{incident_id}/mark-sent")
+async def mark_sent(incident_id: str, payload: MarkSent):
+    inc = await db.incidents.find_one({"id": incident_id, "deleted_at": None})
+    if not inc:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    draft = await db.drafts.find_one({"id": payload.draft_id, "deleted_at": None}, {"_id": 0})
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    update: Dict[str, Any] = {
+        "last_sent_at": now_iso(),
+        "current_stage": draft["stage"],
+        "updated_at": now_iso(),
+    }
+    if draft["stage"] == "RESOLVED":
+        update["status"] = "RESOLVED"
+        update["resolved_at"] = now_iso()
+    await db.incidents.update_one({"id": incident_id}, {"$set": update})
+    await db.drafts.update_one({"id": payload.draft_id}, {"$set": {"sent_at": now_iso()}})
+    updated = await db.incidents.find_one({"id": incident_id}, {"_id": 0})
+    return updated
+
+
+@api_router.delete("/incidents/{incident_id}")
+async def delete_incident(incident_id: str):
+    res = await db.incidents.update_one({"id": incident_id}, {"$set": {"deleted_at": now_iso()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    await db.drafts.update_many({"incident_id": incident_id}, {"$set": {"deleted_at": now_iso()}})
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Push notifications (Emergent managed relay)
+# ---------------------------------------------------------------------------
+PUSH_BASE_URL = "https://integrations.emergentagent.com"
+PUSH_KEY = os.environ.get("EMERGENT_PUSH_KEY", "placeholder")
+_push_client = httpx.AsyncClient(base_url=PUSH_BASE_URL, headers={"X-Push-Key": PUSH_KEY}, timeout=10.0)
+
+
+@api_router.post("/register-push", status_code=201)
+async def register_push(body: RegisterPushBody):
+    resp = await _push_client.post("/api/v1/push/users/register", json=body.model_dump())
+    if resp.status_code == 401:
+        raise HTTPException(500, "EMERGENT_PUSH_KEY missing or invalid")
+    if resp.status_code >= 500:
+        raise HTTPException(502, "Push provider unavailable")
+    resp.raise_for_status()
+    return {"status": "registered"}
+
+
+async def send_push(recipients: List[str], data: Dict[str, Any], idempotency_key: Optional[str] = None) -> None:
+    if not recipients:
+        return
+    if "title" not in data or "message" not in data:
+        raise ValueError("data must include title and message")
+    payload: Dict[str, Any] = {"recipients": recipients[:100], "data": data}
+    if idempotency_key:
+        payload["$idempotency_key"] = idempotency_key
+    resp = await _push_client.post("/api/v1/push/trigger", json=payload)
+    if resp.status_code == 401:
+        raise HTTPException(500, "EMERGENT_PUSH_KEY missing or invalid")
+    if resp.status_code >= 500:
+        raise HTTPException(502, "Push provider unavailable")
+    resp.raise_for_status()
+
+
+import json as _json
+
+
+def _format_countries(raw: str) -> str:
+    try:
+        names = _json.loads(raw)
+        if isinstance(names, list):
+            return ", ".join(str(n) for n in names)
+    except Exception:
+        pass
+    return raw
+
+
 def _render_body(template: Dict[str, Any], values: Dict[str, Any]) -> str:
     lines: List[str] = []
     lines.append(template.get("header", ""))
@@ -291,7 +558,11 @@ def _render_body(template: Dict[str, Any], values: Dict[str, Any]) -> str:
         section_lines: List[str] = []
         single_field = len(section["fields"]) == 1
         for field in section["fields"]:
-            val = str(values.get(field["key"], "") or "").strip()
+            raw = values.get(field["key"], "")
+            if field["type"] == "countries":
+                val = _format_countries(str(raw or "")).strip()
+            else:
+                val = str(raw or "").strip()
             if not val:
                 continue
             if single_field and field["type"] == "textarea":
@@ -307,6 +578,50 @@ def _render_body(template: Dict[str, Any], values: Dict[str, Any]) -> str:
     return "\n".join(lines).strip()
 
 
+def _split_manual(raw: str) -> List[str]:
+    if not raw:
+        return []
+    parts = re.split(r"[;,\s]+", raw.strip())
+    return [p for p in parts if "@" in p]
+
+
+async def _compute_recipients(doc: Dict[str, Any]) -> List[str]:
+    values = doc.get("values", {})
+    category = doc.get("category")
+    recipients: List[str] = [CENTRAL_DTPS, PLATFORM_DIRECTORS_CENTRAL]
+
+    selected: List[str] = []
+    try:
+        selected = _json.loads(values.get("countries", "") or "[]")
+        if not isinstance(selected, list):
+            selected = []
+    except Exception:
+        selected = []
+
+    if selected:
+        cursor = db.countries.find({"name": {"$in": selected}, "deleted_at": None}, {"_id": 0})
+        countries = await cursor.to_list(200)
+        for c in countries:
+            recipients.extend(c.get("platform_directors", []))
+            if category == "IMCR":
+                recipients.extend(c.get("country_dl", []))
+                recipients.extend(c.get("country_dtps", []))
+                recipients.extend(c.get("dwt_leader", []))
+
+    recipients.extend(_split_manual(str(values.get("product_team", "") or "")))
+    recipients.extend(_split_manual(str(values.get("sre", "") or "")))
+
+    # dedupe, case-insensitive, preserve order
+    out: List[str] = []
+    seen = set()
+    for r in recipients:
+        r = r.strip()
+        if r and r.lower() not in seen:
+            seen.add(r.lower())
+            out.append(r)
+    return out
+
+
 @api_router.get("/drafts/{draft_id}/render")
 async def render_draft(draft_id: str):
     doc = await db.drafts.find_one({"id": draft_id, "deleted_at": None}, {"_id": 0})
@@ -318,7 +633,8 @@ async def render_draft(draft_id: str):
     values = doc.get("values", {})
     subject = str(values.get("subject", "") or doc.get("template_name", "")).strip()
     body = _render_body(template, values)
-    return {"subject": subject, "body": body, "recipients": doc.get("recipients", "")}
+    to = await _compute_recipients(doc)
+    return {"subject": subject, "body": body, "to": to, "recipients": "; ".join(to)}
 
 
 # ---------------------------------------------------------------------------

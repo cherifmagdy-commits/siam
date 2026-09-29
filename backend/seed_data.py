@@ -233,3 +233,33 @@ CONTINGENCY_MAP = [
     {'product': 'Tax & Compliance', 'process': 'Fiscal document printing (Bosnia)', 'failed_system': 'TRING', 'owner': 'Svetla Petrova'},
     {'product': 'Tax & Compliance', 'process': 'Fiscal document printing (Bulgaria)', 'failed_system': 'IASUTD', 'owner': 'Svetla Petrova'},
 ]
+
+
+# Crisis distribution list (from Crisis_Distribution_List.xlsx).
+COUNTRIES = [
+    {'name': 'Austria', 'cluster': '1', 'country_dtps': ['DTPS.Austria.Team@cchellenic.com'], 'country_dl': ['AT.CCHBC@cchellenic.com'], 'dwt_leader': ['manuel.strauch@cchellenic.com'], 'platform_directors': ['daniela.kaiser@cchellenic.com']},
+    {'name': 'Bulgaria, BSO', 'cluster': '1', 'country_dtps': ['DTPS.Bulgaria.Team@cchellenic.com'], 'country_dl': ['G.CCHBC.DTPS.CSC.Sofia@cchellenic.com', 'G.cchbc.csc.sofia@cchellenic.com', 'G.CCH.SHSC_Sofia@cchellenic.com', 'G.CCH.SHSC.Outside.Sofia@cchellenic.com', 'G.CCH.SHSC.BG.Externals@cchellenic.com'], 'dwt_leader': ['nikola.perperiev@cchellenic.com'], 'platform_directors': ['yavor.mechkarski@cchellenic.com']},
+    {'name': 'CSC\'s, Zurich HO', 'cluster': '1', 'country_dtps': ['CCHBC.HO.Zug@cchellenic.com'], 'country_dl': ['G.CCHBC.CSC.Vienna@cchellenic.com', 'G.CCHBC.CSC.Athens@cchellenic.com', 'G.cchbc.csc.sofia@cchellenic.com'], 'dwt_leader': ['Spiros.Patsouris@cchellenic.com'], 'platform_directors': []},
+    {'name': 'Czech, Slovakia', 'cluster': '1', 'country_dtps': ['DTPS.Czech.Slovakia.Team@cchellenic.com'], 'country_dl': [], 'dwt_leader': ['jan.svada@cchellenic.com'], 'platform_directors': ['martin.stranak@cchellenic.com']},
+    {'name': 'Finland', 'cluster': '1', 'country_dtps': [], 'country_dl': ['G.CCHBC.CSC.Helsinki@cchellenic.com'], 'dwt_leader': [], 'platform_directors': []},
+    {'name': 'Greece, Cyprus', 'cluster': '1', 'country_dtps': ['DTPS.Greece.Cyprus.Team@cchellenic.com'], 'country_dl': ['g.cchbc.all_greece.and.cyprus@cchellenic.com'], 'dwt_leader': ['john.moustakas@cchellenic.com'], 'platform_directors': ['Konstantinos.Seferiadis@cchellenic.com']},
+    {'name': 'Hungary', 'cluster': '1', 'country_dtps': ['DTPS.Hungary.Team@cchellenic.com'], 'country_dl': ['Mailusers.Hungary@CCHellenic.com'], 'dwt_leader': ['szilard.kohari@cchellenic.com'], 'platform_directors': ['janos.sos@cchellenic.com']},
+    {'name': 'Italy', 'cluster': '1', 'country_dtps': ['IT.Crises.Approvers@cchellenic.com', 'DTPS.Italy@cchellenic.com'], 'country_dl': ['CCHBC.Italy.All@CCHellenic.com'], 'dwt_leader': ['paolo.cacopardi@cchellenic.com', 'monica.carollo@cchellenic.com', 'vito.dongiovanni@cchellenic.com', 'spyridon.gioulis@cchellenic.com', 'Angela.Maiullari@cchellenic.com', 'laura.salaro@cchellenic.com'], 'platform_directors': ['vito.alcibiade@cchellenic.com']},
+    {'name': 'Poland', 'cluster': '1', 'country_dtps': ['DTPS.Poland.Team@cchellenic.com'], 'country_dl': ['PL_POLSKA_PL@cchellenic.com'], 'dwt_leader': ['zbyszek.kantorski@cchellenic.com'], 'platform_directors': ['maksymilian.szeliga@cchellenic.com']},
+    {'name': 'Romania', 'cluster': '1', 'country_dtps': ['DTPS.Romania.Team@cchellenic.com'], 'country_dl': [], 'dwt_leader': ['mircea.tudosie@cchellenic.com'], 'platform_directors': ['Mihaela.Pisai@cchellenic.com']},
+    {'name': 'Genpact', 'cluster': '1&2', 'country_dtps': [], 'country_dl': ['G.GP.ALL@cchellenic.com', 'catalin.crangasu@genpact.com'], 'dwt_leader': ['gabriel.baloi@genpact.com'], 'platform_directors': []},
+    {'name': 'Adria (Bosnia, Croatia, Slovenia)', 'cluster': '2', 'country_dtps': ['DTPS.Adria.Team@cchellenic.com'], 'country_dl': [], 'dwt_leader': ['Hrvoje.Pongracic@cchellenic.com'], 'platform_directors': ['tea.duplancic.vlahovic@cchellenic.com']},
+    {'name': 'Armenia, Ukraine & Moldova', 'cluster': '2', 'country_dtps': ['DTPS.Ukraine.Armenia.Moldova.Team@cchellenic.com'], 'country_dl': ['am-all@cchellenic.com', 'bd.moldova@cchellenic.com', 'moldova.all.users@cchellenic.com'], 'dwt_leader': ['volodymyr.titov@cchellenic.com'], 'platform_directors': ['Andry.Opanasik@cchellenic.com']},
+    {'name': 'Baltics (Latvia, Litva, Estonia)', 'cluster': '2', 'country_dtps': ['DTPS.Baltics.Team@cchellenic.com'], 'country_dl': [], 'dwt_leader': ['zbyszek.kantorski@cchellenic.com'], 'platform_directors': []},
+    {'name': 'Egypt', 'cluster': '2', 'country_dtps': ['EG-HO.MIS@cchellenic.com', 'G.EG.Digital.Hub@cchellenic.com', 'G.CCHBC.CSC.Cairo@cchellenic.com'], 'country_dl': ['eg-group.allusers@cchellenic.com'], 'dwt_leader': ['mahmoud.ehab@cchellenic.com', 'ahmed.tarek@cchellenic.com'], 'platform_directors': ['Dimitris.Zacharopoulos@cchellenic.com']},
+    {'name': 'Ireland', 'cluster': '2', 'country_dtps': ['DTPS.Ireland.Team@cchellenic.com'], 'country_dl': ['CCHBC.IOI@cchellenic.com'], 'dwt_leader': ['steven.enright@cchellenic.com'], 'platform_directors': ['Cosmin.Multescu@cchellenic.com']},
+    {'name': 'Nigeria', 'cluster': '2', 'country_dtps': ['DTPS.Nigeria.Team@cchellenic.com'], 'country_dl': ['DDL.All.Nigerian.Users.BU@cchellenic.com'], 'dwt_leader': ['ope.eniolorunda@cchellenic.com'], 'platform_directors': ['ebenezer.onwuama@cchellenic.com']},
+    {'name': 'Serbia, Montenegro, North Macedonia', 'cluster': '2', 'country_dtps': ['DTPS.PivaraSkopje.Team@cchelleic.com'], 'country_dl': ['SCG.All.Employees@CCHellenic.com'], 'dwt_leader': ['tomica.georgievski@cchellenic.com', 'Nikola.Perperiev@cchellenic.com'], 'platform_directors': ['maria.ivanovska@cchellenic.com', 'Aleksandar.Neskevski@cchellenic.com-']},
+    {'name': 'Switzerland', 'cluster': '2', 'country_dtps': ['DTPS.Switzerland.Team@cchellenic.com', 'G.CH.Mail.Switzerland.All@cchellenic.com'], 'country_dl': ['CHMailKestenholz@cchellenic.com', 'CHMailBussigny@cchellenic.com', 'CHMailLandquart@cchellenic.com', 'CHMailVals@cchellenic.com', 'CHMailZurich@cchellenic.com', 'CHMailQwell@cchellenic.com', 'G.CH.Mail.Switzerland.All@cchellenic.com'], 'dwt_leader': ['charles.mcmenamin@cchellenic.com'], 'platform_directors': ['Miso.Predojevic@cchellenic.com']},
+    {'name': 'Russia', 'cluster': '2', 'country_dtps': ['dtps.russia.team@cchellenic.com'], 'country_dl': [], 'dwt_leader': ['sergey.guschin@cchellenic.com'], 'platform_directors': []},
+    {'name': 'Belarus', 'cluster': '2', 'country_dtps': ['DTPS.Belarus.Team@cchellenic.com'], 'country_dl': ['by.ccbb.all@cchellenic.com'], 'dwt_leader': ['yuri.tyshko@cchellenic.com'], 'platform_directors': []},
+]
+
+# Central recipients (confirmed with user).
+CENTRAL_DTPS = 'dtps.siam@cchellenic.com'
+PLATFORM_DIRECTORS_CENTRAL = 'DTPS.Country.Platform.Directors@cchellenic.com'

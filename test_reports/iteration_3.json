@@ -1,0 +1,57 @@
+{
+  "summary": "Backend: 43/43 pytest tests passed against public URL (adds 13 new tests for incident lifecycle + register-push in test_incidents_and_push.py). Verified: POST /api/incidents returns {incident,draft} with status=OPEN, current_stage=INVESTIGATING, draft.sequence=1, draft.incident_id set, draft.validations={}. POST /api/incidents/{id}/updates creates draft.sequence=2 with prefilled values (title, business_application, countries, product_team all carried over) and validations={} (reset). GET /api/incidents lists with update_count; GET /api/incidents/{id} returns updates ordered by sequence with progress {validated,total}. mark-sent sets last_sent_at + current_stage; RESOLVED-stage mark-sent flips incident.status=RESOLVED and sets resolved_at. DELETE /api/incidents/{id} soft-deletes both incident and its drafts (verified not in /api/drafts or /api/incidents afterwards). 404 paths verified for bad template/incident/draft ids. /api/register-push exists (not 404) and returns controlled 502 with placeholder EMERGENT_PUSH_KEY (no crash). 422 for missing fields. All existing endpoints still pass (5 IMCR + 3 Non-IMCR templates, 150+ products, 36 processes, 21 countries, drafts CRUD, IMCR/Non-IMCR recipient rules, contingency). Frontend: Templates tab opens compose successfully; the countries multi-select section (business_impact) NOW LOCKS after Countries → Done → Validate & Lock (previous regression FIXED). Incidents tab renders with incident cards showing update count and sent status; incident detail shows update thread timeline; 'Post next update' picker opens with 5 stage options; picking IDENTIFIED creates prefilled draft (title='T input-title' carried) with validations RESET (progress 0 of 7) and stage pill 'Identified' — all as per spec. HOWEVER a SEPARATE compose validation blocker remains for the 'timing' section: when a user types values across ALL sections and then clicks Validate & Lock sequentially from top, validate-timing (fields issue_started + next_update) refuses to lock (progress sticks at 3 of 7). Reproduced deterministically. Isolated repro (clicking validate-timing right after typing only its two fields) works — so root cause is state churn during earlier validate-triggered save/invalidate cycles, not the initial typing. Backend logic itself remains proven correct; user cannot reach Send/Preview without workaround.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "app/compose/[id].tsx — Validate & Lock for the 'timing' section",
+        "issue": "After user types into all 11 inputs, picks dropdowns + countries, then clicks Validate & Lock top-to-bottom, validate-subject/status/incident lock fine, then validate-timing silently fails. Progress freezes at 3 of 7. Reproduced across multiple runs (previous iterations saw the same pattern on different sections; this iter it's 'timing'). Isolated repro (open compose → type only issue_started + next_update → click validate-timing) DOES lock, so the trigger is state churn from earlier validate cycles: each validate fires save → mutation → invalidateQueries(['draft',id]) → refetch. During the refetch window, when user quickly clicks the next validate, section.fields.some(!current[f.key]) returns true even though state clearly holds the typed text (verified via input DOM value). Suggested fix: remove queryClient.invalidateQueries(['draft', id]) from useUpdateDraft.onSuccess (or set staleTime: Infinity for the ['draft', id] key while compose is mounted). Alternatively, on refetch success write server values back into local state only if hydrated is still false — which is already the case, so the more effective fix is stopping the refetch entirely.",
+        "testID": "validate-timing",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Compose (7 sections IMCR) → Send via Email → Preview",
+        "issue": "Blocked by the section-lock regression above. Backend /api/drafts/{id}/render is proven correct via pytest, but users cannot reach it from compose because the timing section fails to lock during the top-to-bottom validate sequence.",
+        "affected_testIDs": ["validate-timing", "send-email-btn", "open-outlook-btn"]
+      }
+    ],
+    "design_issues": [
+      {"screen": "compose/[id].tsx Timing inputs", "issues": ["issue_started/next_update TextInputs show placeholder-like text ('05:23 CET, 22 May 2026') that gets APPENDED to typed text on web preview (e.g. value becomes 'T input-issue_started05:23 CET, 22 May 2026'). Likely the placeholder is stored as the field default rather than as placeholder prop, or the field default is being set to today's formatted timestamp. Confirm placeholder vs default in templates_seed."]}
+    ],
+    "react_native_issues": [
+      {"component": "React Native Web deprecations", "issue": "Console warnings: 'props.pointerEvents is deprecated. Use style.pointerEvents' and '\"shadow*\" style props are deprecated. Use \"boxShadow\"' — from third-party libs (BottomSheet / Reanimated). Non-blocking but worth auditing. Reference: warnings emitted on every screen load."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/test_opscomm_api.py",
+    "/app/backend/tests/test_countries_and_recipients.py",
+    "/app/backend/tests/test_incidents_and_push.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "In /app/frontend/src/api.ts (useUpdateDraft), remove queryClient.invalidateQueries(['draft', id]) from onSuccess, OR gate refetch behind a mount-time staleTime:Infinity on the ['draft', id] query while compose is mounted, so that saving one validation does not churn draft identity and cause the next validate click to see a stale/racing section state.",
+    "After the fix, re-run the E2E in the browser: Templates → first IMCR card → type into every input (use sequential typing to trigger onChangeText) → pick dropdowns → pick countries (Italy, Austria) → Validate & Lock top→bottom → confirm ALL 7 sections lock in one pass (progress 7 of 7) → Send via Email enables → Preview shows recipient chips + subject + body.",
+    "Investigate why input-issue_started / input-next_update value in the DOM contains a suffix like '05:23 CET, 22 May 2026' after the user's typed text. Confirm templates_seed uses `placeholder` (not `default`) for these timing fields; otherwise Validate & Lock's non-empty check will always pass and the user's actual typed text is polluted.",
+    "Consider extracting section rendering + validation from compose/[id].tsx (currently 485 lines) into a hook + SectionCard component for readability."
+  ],
+  "critical_code_review_comments": [
+    "server.py still uses deprecated @app.on_event startup/shutdown hooks (FastAPI recommends lifespan). Non-blocking.",
+    "compose/[id].tsx line 111 already reads stateRef.current.values in `missing` check — good — but the surrounding save→invalidate cycle in useUpdateDraft still causes section state churn during rapid sequential validates. Fix is in api.ts, not compose.tsx.",
+    "CountrySheet 'Done' button still lacks a testID; added ad-hoc fallback via get_by_text('Done') in tests but recommend explicit testID='country-sheet-done'.",
+    "register-push endpoint hardcodes upstream URL to https://integrations.emergentagent.com — consider moving to env var so it can be pointed at staging.",
+    "In backend/server.py `_new_draft_doc` copies prefill['product_team']/'sre' even for templates that do not have those fields — harmless because they land in values dict but never rendered. Acceptable for now."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_incidents_and_push.py (new — 13 tests)",
+    "/app/test_reports/pytest/pytest_results.xml (regenerated)"
+  ],
+  "success_rate": {"backend": "100% (43/43)", "frontend": "~80% (templates → compose, countries multi-select, incidents list, incident detail thread, Post next update picker, prefill + validation reset — all working; end-to-end Send flow still blocked by the same section-lock bug that has now moved to the 'timing' section)"},
+  "seed_data_creation": "Tests use TEST_-prefixed items and clean up incidents/drafts via DELETE. No leftover data.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend is 100% green with new pytest file /app/backend/tests/test_incidents_and_push.py covering full incident lifecycle + register-push. Frontend: countries multi-select regression IS FIXED and the countries-hosting section (business_impact) now locks correctly when validated in isolation. Remaining blocker moved to 'timing' section — same root pattern (state churn from useUpdateDraft.onSuccess invalidateQueries) but now surfacing in a different section. Repro: Templates → first IMCR card → sequentially TYPE (do NOT use page.fill which bypasses React onChange) into every text input → pick both dropdowns → pick 2 countries → Done → click Validate & Lock top-to-bottom → validate-timing will fail to lock (3/7 stuck). Isolated repro (only typing timing fields and clicking validate-timing) WORKS, confirming the issue is state churn from earlier validate cycles, not the initial typing. Fix should be in /app/frontend/src/api.ts useUpdateDraft.onSuccess. Incident lifecycle UI (Incidents tab, detail thread, Post next update, prefill, validations reset) all work as spec. register-push endpoint verified with placeholder key → returns 502 (controlled).",
+  "rca_of_issue": "Compose sections re-render under LinearTransition (line 211 of compose/[id].tsx). Each Validate & Lock click causes: (1) setValidations updates state, (2) queueMicrotask fires save → useUpdateDraft mutation → PUT /api/drafts/{id}, (3) mutation.onSuccess invalidates ['draft', id] in src/api.ts, (4) useDraft refetches, (5) draft prop changes → useEffect fires but hydrated=true so setValues is skipped. In a rapid top-to-bottom validate sequence, steps 2-5 happen while the user is already clicking the next section's validate button; the LinearTransition reflow + section card key stability + the intermediate render where `draft` swaps identity can cause the onPress handler bound to the Animated.View to briefly reference a stale stateRef read even though stateRef itself is updated on every render (line 68-69). Empirically the failing section shifts between runs (iter1: 'timing'; iter2: 'business_impact'; iter3: 'timing' again) which supports a race hypothesis over any single field's validation logic. Mitigation: eliminate the ['draft', id] invalidation to remove the refetch → identity churn cycle; the local state is already the source of truth during compose."
+}

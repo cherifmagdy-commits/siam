@@ -6,7 +6,7 @@
 # is always first. Field types: text | textarea | dropdown (dropdown has a
 # `source` of "products" or "processes").
 
-STAGES = ["INVESTIGATING", "IDENTIFIED", "RECOVERING", "MONITORING", "RESOLVED"]
+STAGES = ["IDENTIFIED", "INVESTIGATING", "RECOVERING", "MONITORING", "RESOLVED"]
 
 STAGE_LABEL = {
     "INVESTIGATING": "Investigating",
@@ -17,16 +17,16 @@ STAGE_LABEL = {
 }
 
 IMCR_HEADLINE = {
-    "INVESTIGATING": "We are aware of an issue and are actively investigating.",
-    "IDENTIFIED": "The root cause has been identified. A fix is being prepared.",
+    "INVESTIGATING": "The root cause has been identified. A fix is being prepared.",
+    "IDENTIFIED": "We are aware of an issue and are actively investigating.",
     "RECOVERING": "A fix has been applied and services are recovering.",
     "MONITORING": "The fix is in place and we are monitoring the results closely.",
     "RESOLVED": "Services have been fully restored and confirmed stable.",
 }
 
 NONIMCR_HEADLINE = {
-    "INVESTIGATING": "We are experiencing technical difficulties with the affected service. Our teams are aware and are actively investigating.",
-    "IDENTIFIED": "We are experiencing technical difficulties with the affected service. Our teams are aware of the issue and are working to restore normal service.",
+    "INVESTIGATING": "We are experiencing technical difficulties with the affected service. Our teams are aware of the issue and are working to restore normal service.",
+    "IDENTIFIED": "We are experiencing technical difficulties with the affected service. Our teams are aware and are actively investigating.",
     "RESOLVED": "The technical issue affecting the service has been resolved and the service is operating normally.",
 }
 
@@ -131,8 +131,8 @@ def _imcr_template(stage):
                 {"key": "business_process", "label": "Business Process", "type": "dropdown",
                  "source": "processes", "default": "Order-to-Cash",
                  "placeholder": "Select business process"},
-                {"key": "countries", "label": "Countries impacted", "type": "text",
-                 "default": "AT, BG, GR, PL, IT", "placeholder": "e.g. AT, BG, GR"},
+                {"key": "countries", "label": "Countries impacted", "type": "countries",
+                 "default": "[]", "placeholder": "Select impacted countries"},
                 {"key": "incident_ref", "label": "Incident reference", "type": "text",
                  "default": "INC87324 (CCH), 87234/250626 (SAP)", "placeholder": "INC number(s)"},
                 {"key": "contingency", "label": "Contingency procedure used" if resolved else "Contingency procedure",
@@ -212,8 +212,8 @@ def _nonimcr_template(stage):
                 {"key": "restored_at", "label": "Restored at", "type": "text",
                  "default": "12:45 CET, 22 May 2026", "placeholder": "HH:MM CET, DD Mon YYYY"},
             ] if resolved else []) + [
-                {"key": "countries", "label": "Affected countries", "type": "text",
-                 "default": "AT, BG, GR", "placeholder": "e.g. AT, BG, GR"},
+                {"key": "countries", "label": "Affected countries", "type": "countries",
+                 "default": "[]", "placeholder": "Select affected countries"},
                 {"key": "incident_ref", "label": "Incident reference", "type": "text",
                  "default": "INC91422 (CCH)", "placeholder": "INC number"},
             ],
@@ -244,6 +244,6 @@ def build_templates():
     templates = []
     for stage in STAGES:
         templates.append(_imcr_template(stage))
-    for stage in ["INVESTIGATING", "IDENTIFIED", "RESOLVED"]:
+    for stage in ["IDENTIFIED", "INVESTIGATING", "RESOLVED"]:
         templates.append(_nonimcr_template(stage))
     return templates

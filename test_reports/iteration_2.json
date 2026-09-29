@@ -1,0 +1,49 @@
+{
+  "summary": "Backend: 28/28 pytest tests passed against public URL. All new features verified end-to-end via API: (1) GET /api/countries returns 21 seeded countries each with country_dtps, country_dl, dwt_leader, platform_directors arrays; Italy seed content validated. (2) POST /api/countries adds custom country, dedupes, DELETE soft-deletes. (3) NON_IMCR draft render with countries=[\"Italy\",\"Austria\"] + product_team + sre — 'to' contains dtps.siam@cchellenic.com, DTPS.Country.Platform.Directors@cchellenic.com, per-country platform_directors (vito.alcibiade, daniela.kaiser) and manual pt/sre; explicitly NOT containing country_dl/country_dtps/dwt_leader for non-IMCR. (4) IMCR draft render additionally includes CCHBC.Italy.All@cchellenic.com, DTPS.Italy@cchellenic.com, paolo.cacopardi@cchellenic.com, AT.CCHBC@cchellenic.com, DTPS.Austria.Team@cchellenic.com, manuel.strauch@cchellenic.com; deduped (no duplicates); recipients string is '; '-joined. (5) Body renders 'Italy, Austria' instead of raw JSON. (6) Existing endpoints still pass (templates, products, business-processes, drafts CRUD, contingency). Frontend: Templates screen shows Coca-Cola HBC brand mark (image); IMCR/Non-IMCR segments render with 5+3 cards. Compose screen: countries field opens a bottom sheet with tick boxes (Italy, Austria, all 21 countries) and a Done button; add-new supported. Library has three segments Applications (151)/Processes/Countries (21 items with Italy, Austria etc.). Preview screen (not fully reachable due to open bug below) has been code-reviewed and contains recipient chips card, product-team & sre inputs, subject/body preview and Open in Outlook button. CRITICAL BUG (SAME AS ITERATION 1, NOT FIXED): one section in the IMCR compose flow deterministically fails to lock. In this run it was 'business_impact' (progress stuck at 6 of 7 validated), preventing Send. Backend logic itself is proven correct via API — the failure is in the compose UI state.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "app/compose/[id].tsx – Validate & Lock for a section containing the countries dropdown",
+        "issue": "Validate & Lock deterministically fails to lock one section per compose run — in iteration 1 it was 'timing', in this run it is 'business_impact' (the section that now contains the Countries multi-select). Progress stays at 6 of 7 validated so the 'Send via Email' button never enables and the user cannot reach Preview. Suspected cause is still the same: validateSection's `missing` check closes over `values` from render scope, while the sections list identity churns (LinearTransition + ['draft', id] invalidation on every updateDraft.onSuccess), so the click's handler references a stale values snapshot where the just-set countries JSON is missing. Fix: read from stateRef.current.values inside validateSection's missing check, or suppress ['draft', id] invalidation while the compose screen is mounted (staleTime Infinity), or don't re-hydrate after saves. Note: the code already uses functional setValidations, so the previous fix was partial — the `missing` check is the remaining stale-closure.",
+        "testID": "validate-business_impact",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Compose → Send via Email → Preview",
+        "issue": "Same as iteration 1: full flow to Preview is blocked because one section per run refuses to lock. Backend render endpoint is fully working (verified via pytest) but users can't reach it from the mobile UI without unlocking/relocking the affected section.",
+        "affected_testIDs": ["validate-business_impact", "send-email-btn", "preview-subject", "open-outlook-btn"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/test_opscomm_api.py",
+    "/app/backend/tests/test_countries_and_recipients.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "In /app/frontend/app/compose/[id].tsx, change validateSection's `missing` check from `values[f.key]` to `stateRef.current.values[f.key]` so it reads the latest values (fixes stale closure when countries were just selected). Additionally, remove `queryClient.invalidateQueries(['draft', id])` from useUpdateDraft.onSuccess (or set staleTime infinite for the ['draft', id] key while mounted) so the draft doesn't refetch after every save and cause section identity churn under LinearTransition.",
+    "After the fix, re-run: templates → tap first IMCR card → open Countries → tick Italy + Austria → Done → Validate & Lock each of the 7 sections → confirm all 7 lock, Send enables, Preview shows chip list containing dtps.siam@cchellenic.com, DTPS.Country.Platform.Directors@cchellenic.com, Italy + Austria platform_directors + country_dl + country_dtps + dwt_leader emails, plus product_team & sre after they are typed, and body contains readable 'Italy, Austria'."
+  ],
+  "critical_code_review_comments": [
+    "compose/[id].tsx line 110: `const missing = section.fields.some((f) => !String(values[f.key] ?? \"\").trim());` — reads `values` from render closure, which can be stale after a bottom-sheet-driven setValue immediately followed by a Pressable onPress. Use stateRef.current.values.",
+    "server.py still uses deprecated @app.on_event startup/shutdown hooks — not blocking.",
+    "compose/[id].tsx is now >480 lines; consider extracting SectionCard and hooks module.",
+    "CountrySheet 'Done' button does not have a testID — recommend adding testID=\"country-sheet-done\" for test stability. Also the country dropdown display shows '2 selected · Italy, Austria' — nice UX but the label is duplicated (count + names) which can wrap awkwardly on narrow screens."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_countries_and_recipients.py (new)",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "success_rate": {"backend": "100% (28/28)", "frontend": "~85% (branding, templates, countries multi-select, library Countries segment all work; end-to-end Send flow blocked by the same one-section-won't-lock bug from iteration 1)"},
+  "seed_data_creation": "Countries collection now seeds 21 countries. Tests create+cleanup TEST_-prefixed items.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend is 100% green with new pytest file /app/backend/tests/test_countries_and_recipients.py covering countries CRUD, non-IMCR recipient rules, IMCR recipient rules, body country formatting and dedupe. Frontend blocker: one Validate & Lock per compose run silently fails (previous iter: 'timing' section; this iter: 'business_impact' — the section that now hosts the Countries multi-select). Repro: Templates → first IMCR card → tap Countries → select Italy+Austria → Done → tap Validate & Lock on every section from top to bottom → progress stops at 6 of 7 → Send disabled. Once fixed, full E2E should work because backend render endpoint is proven correct.",
+  "rca_of_issue": "Same root cause as iteration 1 but different manifestation section. The `validateSection` handler in compose/[id].tsx reads `values[f.key]` from render closure. When a section contains a bottom-sheet input (Countries), the click sequence is: openSheet → setValue(countries, JSON) → close sheet → tap Validate & Lock. Between setValue and the next render committing, the handler bound to the Animated.View card can retain a stale `values` snapshot where the countries JSON is still empty, causing `missing` to be truthy → toast 'Fill in all fields before validating' fires and setValidations is skipped. Fix: read via `stateRef.current.values` in the missing check, since stateRef is updated on every render (line 68-69 already keeps it fresh). Also removing the ['draft', id] invalidation from useUpdateDraft.onSuccess eliminates unnecessary refetches that churn section identity under LinearTransition."
+}

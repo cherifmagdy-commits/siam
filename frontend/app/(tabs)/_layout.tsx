@@ -1,6 +1,6 @@
 import { BlurView } from "expo-blur";
 import { Tabs } from "expo-router";
-import { Books, FileText, NotePencil } from "phosphor-react-native";
+import { Books, FileText, Warning } from "phosphor-react-native";
 import { Platform, StyleSheet } from "react-native";
 
 import { usesNativeTabs } from "@/src/navigation";
@@ -18,9 +18,9 @@ export default function TabsLayout() {
           <NativeTabs.Trigger.Icon sf="doc.text" />
           <NativeTabs.Trigger.Label>Templates</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="drafts">
-          <NativeTabs.Trigger.Icon sf="square.and.pencil" />
-          <NativeTabs.Trigger.Label>Drafts</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger name="incidents">
+          <NativeTabs.Trigger.Icon sf="exclamationmark.triangle" />
+          <NativeTabs.Trigger.Label>Incidents</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
         <NativeTabs.Trigger name="library">
           <NativeTabs.Trigger.Icon sf="books.vertical" />
@@ -69,11 +69,11 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="drafts"
+        name="incidents"
         options={{
-          title: "Drafts",
+          title: "Incidents",
           tabBarIcon: ({ color, focused }) => (
-            <NotePencil size={24} color={color} weight={focused ? "fill" : "regular"} />
+            <Warning size={24} color={color} weight={focused ? "fill" : "regular"} />
           ),
         }}
       />

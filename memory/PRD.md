@@ -48,3 +48,27 @@ communication is opened in the device email app (Outlook/Mail) to send.
   contingency_map when a Business Application is selected.
 - P2: Duplicate a resolved draft to start a follow-up update; recipient groups/distribution lists.
 - P2: Rich HTML email export matching the original .oft styling.
+
+## Iteration 3 (2026-06) — Incident lifecycle, countries, branding, reminders
+- Coca-Cola HBC branding (brand red in theme.ts, BrandMark wordmark in headers).
+- Countries multi-select (from Crisis_Distribution_List.xlsx) drives body line + recipients.
+- Recipient rules: Non-IMCR = dtps.siam + DTPS.Country.Platform.Directors + per-country platform_directors + manual product_team/sre. IMCR = same + per-country country_dl + country_dtps + dwt_leader.
+- Incident lifecycle: linked thread; start template => incident + first draft; "Post next update" picks next stage, prefills from previous update, validations RESET. Timeline view, mark-sent, resolve.
+- On-device scheduled reminders 1h after send + optional "Next update by" time; deep-links to incident; cancelled on resolve. Device/build only.
+- Emergent server-push plumbing (POST /register-push, send_push) — deploy-ready, needs google-services.json + build. EMERGENT_PUSH_KEY=placeholder in backend/.env (never edit; deployer sets it).
+- Compose validation race FIXED: local state + debounced autosave; useUpdateDraft invalidates only ['drafts'].
+- New collections: incidents, countries, contingency_map. drafts gain incident_id/sequence/sent_at.
+- New API: /incidents (+updates,/mark-sent), /countries CRUD, /register-push, /contingency.
+- Tabs: Templates, Incidents (replaced Drafts), Library (Applications/Processes/Countries + Excel import).
+- Backend tests: 43/43 passing (test_countries_and_recipients.py, test_incidents_and_push.py).
+
+## Backlog / Next
+- P1: Auto-suggest Business Process / Contingency Procedure / Crisis Lead (owner) from contingency_map on Business Application select.
+- P2: Branded HTML email export matching original .oft styling.
+- P2: Editable country DLs in Library (custom countries currently name-only).
+
+## Iteration 4 (2026-06) — Snooze, auto-fill, country picker, stage fix
+- Snooze: reminder notifications carry "incident-reminder" category with Snooze 15m/30m action buttons; incident detail banner also has 15m/30m snooze chips (snoozeIncidentReminder reschedules). Device/build only.
+- Auto-fill contingency: selecting a Business Application in compose calls GET /contingency?product= and fills business_process (=process), crisis_lead (=owner), contingency (=failed system) — only for UNLOCKED sections; shows a toast.
+- Country picker rebuilt as header→BottomSheetScrollView→footer (no overlap); each country is an individual tick row.
+- Stage order/content corrected per user: order is now IDENTIFIED → INVESTIGATING → RECOVERING → MONITORING → RESOLVED, and the Identified/Investigating headline messages were swapped (Identified = "We are aware of an issue and are actively investigating."; Investigating = "The root cause has been identified…"). Applied to STAGES + both frontend STAGE_ORDER arrays + IMCR/NONIMCR headline seeds.
