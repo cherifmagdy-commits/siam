@@ -1,0 +1,220 @@
+{
+  "app_name": "OpsComm",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A highly trustworthy, utility-focused operational tool where clarity and incident state are the immediate heroes.",
+  "color": {
+    "light": {
+      "surface": "#FFFFFF",
+      "onSurface": "#111111",
+      "surfaceSecondary": "#F5F5F5",
+      "onSurfaceSecondary": "#333333",
+      "surfaceTertiary": "#EBEBEB",
+      "onSurfaceTertiary": "#555555",
+      "surfaceInverse": "#111111",
+      "onSurfaceInverse": "#FFFFFF",
+      "brand": "#111111",
+      "brandPrimary": "#1A1A1A",
+      "onBrandPrimary": "#FFFFFF",
+      "brandSecondary": "#EAEAEA",
+      "onBrandSecondary": "#111111",
+      "brandTertiary": "#F0F0F0",
+      "onBrandTertiary": "#333333",
+      "success": "#10B981",
+      "onSuccess": "#FFFFFF",
+      "warning": "#F59E0B",
+      "onWarning": "#FFFFFF",
+      "error": "#EF4444",
+      "onError": "#FFFFFF",
+      "info": "#64748B",
+      "onInfo": "#FFFFFF",
+      "border": "#E5E5E5",
+      "borderStrong": "#CCCCCC",
+      "divider": "#F0F0F0",
+      "muted": "#737373",
+      "onBrand": "#FFFFFF",
+      "statusInvestigating": "#F59E0B",
+      "onStatusInvestigating": "#FFFFFF",
+      "statusIdentified": "#F97316",
+      "onStatusIdentified": "#FFFFFF",
+      "statusRecovering": "#14B8A6",
+      "onStatusRecovering": "#FFFFFF",
+      "statusMonitoring": "#64748B",
+      "onStatusMonitoring": "#FFFFFF",
+      "statusResolved": "#10B981",
+      "onStatusResolved": "#FFFFFF"
+    },
+    "dark": {
+      "surface": "#000000",
+      "onSurface": "#FAFAFA",
+      "surfaceSecondary": "#1A1A1A",
+      "onSurfaceSecondary": "#EBEBEB",
+      "surfaceTertiary": "#2A2A2A",
+      "onSurfaceTertiary": "#A3A3A3",
+      "surfaceInverse": "#FAFAFA",
+      "onSurfaceInverse": "#111111",
+      "brand": "#FAFAFA",
+      "brandPrimary": "#FAFAFA",
+      "onBrandPrimary": "#111111",
+      "brandSecondary": "#333333",
+      "onBrandSecondary": "#FAFAFA",
+      "brandTertiary": "#222222",
+      "onBrandTertiary": "#EBEBEB",
+      "success": "#34D399",
+      "onSuccess": "#064E3B",
+      "warning": "#FBBF24",
+      "onWarning": "#78350F",
+      "error": "#F87171",
+      "onError": "#450A0A",
+      "info": "#94A3B8",
+      "onInfo": "#0F172A",
+      "border": "#333333",
+      "borderStrong": "#555555",
+      "divider": "#222222",
+      "muted": "#888888",
+      "onBrand": "#111111",
+      "statusInvestigating": "#FBBF24",
+      "onStatusInvestigating": "#78350F",
+      "statusIdentified": "#FB923C",
+      "onStatusIdentified": "#7C2D12",
+      "statusRecovering": "#2DD4BF",
+      "onStatusRecovering": "#134E4A",
+      "statusMonitoring": "#94A3B8",
+      "onStatusMonitoring": "#0F172A",
+      "statusResolved": "#34D399",
+      "onStatusResolved": "#064E3B"
+    }
+  },
+  "typography": {
+    "displayFontFamily": "Geist",
+    "textFontFamily": "Geist",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical breathing room for form inputs; grouped sections have md spacing, distinct sections separated by xl.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use glass on the sticky progress/CTA footer container at the bottom of the Compose screen.",
+      "Use glass on the bottom tab bar.",
+      "Use glass on sticky headers when scrolling long incident forms."
+    ],
+    "dont's": [
+      "Never use glass on the paragraph validation cards themselves.",
+      "Never use glass on form input fields."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Templates List",
+      "purpose": "Select an incident communication template based on IMCR/non-IMCR category and current status stage.",
+      "states": {
+        "loading": "Skeleton rows of template cards.",
+        "empty": "Illustration of an empty desk/checklist, 'No templates found', CTA to sync/refresh.",
+        "error": "Error reading template data, retry button."
+      },
+      "layout": "Use a segmented control at the top to toggle between IMCR and Non-IMCR. Below, group templates by status (Investigating, Identified, Recovering, etc.). Each template is a surfaceSecondary card with a semantic status pill (e.g., Amber for Investigating) on the top right, a bold title, and a subtle right chevron. Scroll vertically."
+    },
+    {
+      "name": "Compose / Fill Incident",
+      "purpose": "Fill out the template paragraphs, lock them via validation, and send the email.",
+      "states": {
+        "loading": "Spinner centered on screen.",
+        "empty": "N/A - Screen is instantiated with a template.",
+        "error": "Unable to load template structure."
+      },
+      "layout": "A long scrollable form. Each section (Subject, Status Headline, Business Impact, etc.) is wrapped in a validation card (surfaceSecondary, md radius). Inside the card: input fields/dropdowns. Below the inputs in each card: a 'Validate & Lock' button (brandSecondary). When clicked, the card border becomes 'success' colored, inputs turn read-only, and the button is replaced by a green checkmark + 'Locked' label. Searchable Dropdowns (Business App/Process) trigger a Bottom Sheet. Sticky footer at the bottom (glassmorphism) contains a linear progress bar (width mapping to % validated) and a primary 'Send via Email' CTA (disabled until 100% validated)."
+    },
+    {
+      "name": "Email Preview",
+      "purpose": "Final read-through of the constructed email before handing off to the native Outlook app.",
+      "states": {
+        "loading": "Generating preview...",
+        "empty": "N/A",
+        "error": "Failed to compile template."
+      },
+      "layout": "Render the email as a simulated email view (white background card, grey border, monospace or standard sans-serif). A sticky bottom CTA 'Open in Outlook' (brandPrimary)."
+    },
+    {
+      "name": "Drafts",
+      "purpose": "Resume in-progress incident communications.",
+      "states": {
+        "loading": "Skeleton list.",
+        "empty": "Empty desk illustration, 'No active drafts', 'Start a new communication' CTA.",
+        "error": "Failed to load drafts."
+      },
+      "layout": "List view. Each row shows the draft subject, last edited timestamp, and a progress pill (e.g., '3/5 Validated')."
+    },
+    {
+      "name": "Library / Settings",
+      "purpose": "Manage the dictionary of Business Applications and Processes.",
+      "states": {
+        "loading": "Spinner.",
+        "empty": "N/A",
+        "error": "Error loading library data."
+      },
+      "layout": "Two main sections: Business Applications and Business Processes. 'Add New' row at the top of each. A standout brandSecondary card at the top for 'Import from Excel' action."
+    }
+  ],
+  "images": {
+    "hero_templates": {
+      "url": "https://images.unsplash.com/photo-1680992046626-418f7e910589?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHwxfHxzZXJ2ZXIlMjByb29tJTIwYWJzdHJhY3QlMjBjbGVhbiUyMGFyY2hpdGVjdHVyZXxlbnwwfHx8fDE3OTA2ODM2NDB8MA&ixlib=rb-4.1.0&q=85",
+      "dark": "https://images.unsplash.com/photo-1680992046615-065f58bcb4d8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHwyfHxzZXJ2ZXIlMjByb29tJTIwYWJzdHJhY3QlMjBjbGVhbiUyMGFyY2hpdGVjdHVyZXxlbnwwfHx8fDE3OTA2ODM2NDB8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Abstract clean server room indicating IT operations"
+    },
+    "empty_drafts": {
+      "url": "https://images.unsplash.com/photo-1518655048521-f130df041f66?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHwxfHxlbXB0eSUyMGNoZWNrbGlzdCUyMGRlc2slMjBtaW5pbWFsaXN0fGVufDB8fHx8MTc5MDY4MzY0MHww&ixlib=rb-4.1.0&q=85",
+      "alt": "Minimalist empty desk with a keyboard, indicating no pending tasks"
+    }
+  },
+  "haptics": {
+    "validate_paragraph": "success",
+    "toggle_segment": "light",
+    "open_bottom_sheet": "selection",
+    "add_new_dropdown_item": "medium",
+    "send_email_cta": "heavy"
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the Vercel/Linear-inspired monochromatic palette for core UI elements, reserving color explicitly for semantic statuses (Amber, Teal, Emerald, etc.) to immediately convey incident severity.",
+    "Form Validation Pattern: Use React Hook Form context. Implement the validation step as a card-level action. Once validated, set inputs to read-only, swap the 'Validate' button for a Success checkmark, and update the card border to the 'success' token.",
+    "Dropdown Search & Add: Implement using `@gorhom/bottom-sheet`. Include a sticky search input. If the search term has no exact matches, render a 'Create [term]' row at the end of the filtered list.",
+    "Sticky Progress Footer: Must use a glassmorphism container fixed at the bottom. The content behind it must have adequate padding so it can be scrolled fully into view. The 'Send via Email' button remains disabled (opacity 0.5) until all paragraphs have been validated.",
+    "No blue or purple anywhere in the UI. Ensure status colors meet WCAG contrast thresholds in both Light and Dark modes against their respective surfaces.",
+    "Use Phosphor icons consistently (filled for active tabs/states, regular/outlined for inactive or standard actions).",
+    "The Compose screen should animate the validation state change (e.g., using Reanimated layout transitions to slide out the button and fade in the locked status)."
+  ]
+}

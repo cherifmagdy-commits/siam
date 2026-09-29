@@ -1,0 +1,53 @@
+{
+  "summary": "Backend: 18/18 pytest tests passed against public URL — templates (8, 5 IMCR + 3 Non-IMCR with sections/header/footer), products (150+ seeded, POST dedupes, DELETE soft-deletes), business-processes (36+ seeded, POST/DELETE), drafts (create with defaults, list with progress, get with embedded template, PUT persists values/validations/recipients, DELETE), render (subject + body), contingency lookup. Frontend: Templates tab (IMCR/Non-IMCR segments, cards), Drafts tab (list + delete), Library tab (segments, search, add product, import button present), navigation to Compose, section cards, Validate & Lock swaps to Edit, dropdowns render, Preview screen has recipients input, subject, body and Open in Outlook button — all functional individually. CRITICAL BUG: The 'timing' section (4th card) deterministically fails to lock when validating all sections in sequence, blocking the Send button (progress stays 6/7 even with 1.2s + 1.5s waits between clicks). This is not a test-timing issue — reproduces every run.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "app/compose/[id].tsx – Validate & Lock for 'timing' section",
+        "issue": "Clicking Validate & Lock on the 'timing' section (INVESTIGATING IMCR) does NOT lock it while every other section locks correctly. Progress stays at 6 of 7 validated so the 'Send via Email' button remains disabled and users cannot proceed to preview. Reproduces deterministically. Suspected root cause: useUpdateDraft.onSuccess invalidates ['draft', id] which refetches the draft after every save; the returned draft's `template.sections` array gets new object references between clicks, and combined with the Animated.View LinearTransition on the previously-locked card, the onPress handler bound to the 'timing' section fires with a stale/mismatched section reference so validateSection's `missing` check trips (or the setValidations update is dropped by a subsequent refetch merge). Fix idea: memoize sections from the first hydrated draft, or drop the refetch-on-save (rely on local state + trailing PUT), or use functional setValidations updater + setValues updater so state is never stale.",
+        "testID": "validate-timing / section-card-timing",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Compose → Send via Email → Preview",
+        "issue": "Send button never enables because timing section fails to lock — full flow to preview is blocked from a fresh IMCR template. If timing is skipped it works.",
+        "affected_testIDs": ["validate-timing", "send-email-btn", "preview-subject"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "expo config / deprecated web-only warnings",
+        "issue": "Console warnings on web preview: 'props.pointerEvents is deprecated. Use style.pointerEvents' and '\"shadow*\" style props are deprecated. Use \"boxShadow\"'. Non-blocking, but should be tracked. Likely coming from a library (react-native-reanimated / bottom-sheet). Not a crash."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/test_opscomm_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix the 'timing' section validation bug in /app/frontend/app/compose/[id].tsx — use functional state updaters (setValidations(prev => ({...prev, [key]: true}))) and consider disabling ['draft', id] invalidation on updateDraft.onSuccess (or removing the refetch) so section object references don't change mid-interaction. Verify user can lock all 7 IMCR sections in sequence and Send becomes enabled.",
+    "Optional: memoize `sections` from first hydration so identity is stable across saves."
+  ],
+  "critical_code_review_comments": [
+    "useUpdateDraft.onSuccess invalidates both ['drafts'] and ['draft', id] — the latter causes useDraft to refetch after every keystroke/validate. This is expensive AND is the likely trigger for the timing-section lock bug. Consider skipping the ['draft', id] invalidation while the compose screen is mounted, or set staleTime to Infinity for that key.",
+    "compose/[id].tsx exceeds 400 lines — consider splitting SectionCard and useComposeState into their own modules.",
+    "validateSection and unlockSection close over `values`/`validations` from render scope; safer to use setValidations((prev)=>({...prev,[key]:val})) pattern to eliminate any stale-closure race.",
+    "server.py uses deprecated @app.on_event('startup'/'shutdown') hooks (FastAPI recommends lifespan handlers) — not blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/conftest.py (new)",
+    "/app/backend/tests/test_opscomm_api.py (new)"
+  ],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "~85% (all screens/CRUD work; end-to-end send flow blocked by timing-section bug)"},
+  "seed_data_creation": "Backend already seeds 150 products, 36 business processes, contingency map, and 8 templates on startup. Tests create+cleanup TEST_-prefixed items.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend URL: EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env. Backend tests live in /app/backend/tests/ (pytest). The known open bug is the 'timing' section on an INVESTIGATING IMCR draft failing to lock via Validate & Lock — reproduce by tapping a first IMCR template card, then tapping every Validate & Lock button in order; timing (4th) stays unlocked and Send stays disabled. Once fixed, retest full flow: templates → compose → validate all 7 → Send via Email → Preview (subject/body/recipients/Open in Outlook).",
+  "rca_of_issue": "Repro: navigate to Templates → tap first IMCR card (Major Incident – Investigating) → tap Validate & Lock on each section top-to-bottom. Expected: all 7 lock and Send button enables. Observed: sections 1,2,3,5,6,7 lock; 'timing' (index 4) does not — footer stays '6 of 7 validated'. Backend GET /api/drafts/{id} returns full default values for issue_started and next_update (both non-empty), so backend data is not at fault. Very likely a stale-closure / refetch-driven identity churn interacting with the LinearTransition layout animation on Animated.View. Mitigation: functional state updaters + suppress the ['draft', id] invalidation on save (or set staleTime infinite while composing). Once patched, all frontend flows should pass end-to-end."
+}
