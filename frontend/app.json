@@ -9,7 +9,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.outlookformhub.lr30py"
+      "bundleIdentifier": "com.emergent.outlookformhub.lr30py",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": ["ms-outlook", "mailto"]
+      }
     },
     "android": {
       "adaptiveIcon": {

@@ -1,8 +1,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, PaperPlaneTilt, SignOut, UsersThree } from "phosphor-react-native";
+import { ArrowLeft, EnvelopeSimple, PaperPlaneTilt, SignOut, UsersThree } from "phosphor-react-native";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, Text, TextInput, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -37,6 +37,7 @@ export default function PreviewScreen() {
   const [sre, setSre] = useState("");
   const [webHeight, setWebHeight] = useState(420);
   const [sending, setSending] = useState(false);
+  const [opening, setOpening] = useState(false);
 
   const { data: email, isLoading } = useQuery({
     queryKey: ["render", id],
@@ -124,7 +125,50 @@ export default function PreviewScreen() {
     }
   };
 
-  const footerHeight = 140;
+  // Primary flow: open the signed-in Outlook app on the phone with To + Subject +
+  // plain-text body pre-filled. No paste, no Azure. (Outlook's compose deep link
+  // cannot carry HTML, so the body is clean plain text.)
+  const openInOutlookApp = async () => {
+    if (!draft || !email) return;
+    setOpening(true);
+    haptics.heavy();
+    try {
+      await updateDraft.mutateAsync({ values: { ...draft.values, product_team: productTeam, sre } });
+      const fresh = await fetchRenderedEmail(id);
+      qc.setQueryData(["render", id], fresh);
+
+      const to = fresh.to.join(";");
+      const q = `to=${encodeURIComponent(to)}&subject=${encodeURIComponent(fresh.subject)}&body=${encodeURIComponent(fresh.body)}`;
+      const outlookUrl = `ms-outlook://compose?${q}`;
+      const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(fresh.subject)}&body=${encodeURIComponent(fresh.body)}`;
+
+      let opened = false;
+      try {
+        if (await Linking.canOpenURL(outlookUrl)) {
+          await Linking.openURL(outlookUrl);
+          opened = true;
+        }
+      } catch {}
+      if (!opened) {
+        try {
+          await Linking.openURL(mailtoUrl);
+          opened = true;
+        } catch {}
+      }
+      if (!opened) {
+        toast("Couldn't open the Outlook app — is it installed and signed in?", "error");
+        return;
+      }
+      haptics.success();
+      await afterDraftCreated();
+    } catch (e: any) {
+      toast(e?.message || "Could not open Outlook", "error");
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  const footerHeight = 176;
   const to = email?.to ?? [];
 
   return (
@@ -230,40 +274,50 @@ export default function PreviewScreen() {
       )}
 
       <View style={[styles.footer, { height: footerHeight + insets.bottom, paddingBottom: insets.bottom + spacing.sm }]}>
-        {ms.signedIn ? (
-          <View style={styles.acctRow}>
-            <Text style={styles.acctText} numberOfLines={1}>
-              {ms.account?.upn ? `Signed in as ${ms.account.upn}` : "Signed in to Microsoft 365"}
-            </Text>
-            <Pressable testID="ms-signout" hitSlop={8} onPress={ms.signOut} style={styles.signOutBtn}>
-              <SignOut size={14} color={colors.muted} />
-              <Text style={styles.signOutText}>Sign out</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <Text style={styles.acctHint} numberOfLines={1}>
-            {ms.configured
-              ? `Creates a ready-to-send draft in ${ms.sharedMailbox}`
-              : "Outlook 365 not configured yet — ask IT to finish Azure setup"}
-          </Text>
-        )}
         <Pressable
-          testID="create-draft-btn"
-          style={[styles.sendBtn, (!email || sending || !ms.configured) && { opacity: 0.5 }]}
-          onPress={createDraftInOutlook}
-          disabled={!email || sending || !ms.configured}
+          testID="open-outlook-app-btn"
+          style={[styles.sendBtn, (!email || opening) && { opacity: 0.5 }]}
+          onPress={openInOutlookApp}
+          disabled={!email || opening}
         >
-          {sending ? (
+          {opening ? (
             <ActivityIndicator color={colors.onBrandPrimary} />
           ) : (
             <>
               <PaperPlaneTilt size={18} weight="fill" color={colors.onBrandPrimary} />
-              <Text style={styles.sendText}>
-                {ms.signedIn ? "Create draft in Outlook" : "Sign in & create Outlook draft"}
+              <Text style={styles.sendText}>Open in Outlook app</Text>
+            </>
+          )}
+        </Pressable>
+
+        <Pressable
+          testID="create-draft-btn"
+          style={[styles.draftBtn, (!email || sending || !ms.configured) && { opacity: 0.5 }]}
+          onPress={createDraftInOutlook}
+          disabled={!email || sending || !ms.configured}
+        >
+          {sending ? (
+            <ActivityIndicator color={colors.onSurface} />
+          ) : (
+            <>
+              <EnvelopeSimple size={16} weight="bold" color={colors.onSurface} />
+              <Text style={styles.draftText}>
+                {!ms.configured
+                  ? "Formatted draft (Outlook 365 — setup pending)"
+                  : ms.signedIn
+                    ? "Create formatted draft in Outlook 365"
+                    : "Sign in for exact-formatted Outlook draft"}
               </Text>
             </>
           )}
         </Pressable>
+
+        {ms.signedIn ? (
+          <Pressable testID="ms-signout" hitSlop={8} onPress={ms.signOut} style={styles.signOutBtn}>
+            <SignOut size={13} color={colors.muted} />
+            <Text style={styles.signOutText}>Signed in as {ms.account?.upn ?? "Microsoft 365"} · Sign out</Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -346,14 +400,19 @@ const useStyles = makeStyles((colors) => ({
     paddingVertical: spacing.md,
   },
   sendText: { fontSize: 16, fontWeight: "700", color: colors.onBrandPrimary },
-  acctRow: {
+  draftBtn: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: spacing.sm,
+    justifyContent: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm + 2,
+    marginTop: spacing.sm,
   },
-  acctText: { flex: 1, fontSize: 12, color: colors.onSurfaceSecondary, marginRight: spacing.sm },
-  acctHint: { fontSize: 12, color: colors.muted, marginBottom: spacing.sm },
-  signOutBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+  draftText: { fontSize: 14, fontWeight: "700", color: colors.onSurface },
+  signOutBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, marginTop: spacing.sm },
   signOutText: { fontSize: 12, fontWeight: "600", color: colors.muted },
 }));

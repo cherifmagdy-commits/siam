@@ -1,0 +1,40 @@
+{
+  "summary": "Verified new 'Open in Outlook app' deep-link primary button on the Preview screen plus all requested backend contract & regression items. Added /app/backend/tests/test_outlook_deeplink_flow.py (8 tests, 100% green). Full backend suite is 79/79 GREEN (was 71/71, +8 new). Frontend (mobile viewport 390x844, Expo web preview): navigated directly to /preview/{id} for a freshly created IMCR draft with countries=[Austria,Greece] and subject=TEST_preview_deeplink. Both action buttons are present with correct testIDs and copy: PRIMARY [data-testid='open-outlook-app-btn'] labelled 'Open in Outlook app' (red brand button), SECONDARY [data-testid='create-draft-btn'] labelled 'Formatted draft (Outlook 365 — setup pending)' and aria-disabled=true (correct since /outlook/config.configured=false). Preview subject and 6-recipient distribution chip list render correctly. Tapping the primary button on web does NOT crash the app — page stays at /preview/{id}, no red screen, no JS error (as expected per review-request note: ms-outlook:// deep link is a native-only path via Linking, no-ops on web). Backend contracts verified: (1) GET /api/drafts/{id}/render returns plain-text 'body' (no <br>/<html>/<div>), 'to' array, 'subject' — with countries=['Austria','Greece'] body contains 'Austria\\nGreece' and does NOT contain 'Austria, Greece'; (2) GET /api/drafts/{id}/render-html still contains 'Austria<br>Greece' — no regression on prior newline fix; (3) GET /api/outlook/config → configured:false; (4) POST /api/auth/microsoft/exchange → 503 'Outlook integration is not configured yet'; (5) POST /api/outlook/drafts/{id} without Bearer → 401; (6) Full compose flow POST /drafts → PUT values → PUT validations (Validate & Lock analogue) → GET /render + /render-html all 200 with expected content. Pre-existing web-only warnings (expo-notifications on web, props.pointerEvents, shadow* style props) unchanged and non-blocking. WebView preview inside the email card shows 'React Native WebView does not support this' on web — that's an intentional web-only limitation of react-native-webview, not a regression.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "React-native-web deprecation warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Cosmetic, non-blocking on web. Reference: repo-wide shadowColor/shadowOffset/shadowOpacity/shadowRadius usages."},
+      {"component": "props.pointerEvents", "issue": "React-native-web deprecation warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Cosmetic, non-blocking. Likely in @gorhom/bottom-sheet backdrop or a local component."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_outlook_deeplink_flow.py",
+    "/app/test_reports/pytest/pytest_outlook_deeplink_flow.xml",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "No functional action required — the new 'Open in Outlook app' deep-link button is wired correctly and the previous formatted-draft path is preserved as a disabled secondary until Azure is configured.",
+    "Optional cleanup: migrate shadow* style props to boxShadow and props.pointerEvents to style.pointerEvents to silence react-native-web warnings.",
+    "Optional: server.py still uses deprecated @app.on_event startup/shutdown (FastAPI recommends `lifespan`)."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/app/preview/[id].tsx openInOutlookApp(): correctly persists productTeam/sre, refreshes the /render payload (qc.setQueryData) before building the deep-link URL, URL-encodes to/subject/body, tries ms-outlook://compose first with Linking.canOpenURL guard, falls back to mailto:, and toasts if neither opens. Also awaits afterDraftCreated() only on success — good.",
+    "/app/frontend/app/preview/[id].tsx line 140: joins recipients with ';' for the mailto/outlook URL. That's correct for Outlook's compose deep link (Outlook parses ; as separator); mailto: is also broadly tolerant. Fine as-is.",
+    "/app/backend/server.py /render: body is pure plain text — _render_body uses '\\n' joins, _format_countries uses '\\n'. Perfect for the deep-link body. No HTML leakage confirmed by test.",
+    "/app/backend/server.py: outlook_create_draft still enforces Bearer header before the shared-draft call. 401 without Bearer verified. Regression clean.",
+    "/app/frontend/app/preview/[id].tsx: WebView still used to render the HTML preview — on native this shows the corporate template, on web it degrades to a 'not supported' text (intentional react-native-webview limitation). Consider a web-only <iframe srcdoc={html}> fallback if the team wants a nicer web preview, but this is not a bug for the current task."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_outlook_deeplink_flow.py (new — 8 tests)",
+    "/app/test_reports/pytest/pytest_outlook_deeplink_flow.xml (new)",
+    "/app/test_reports/pytest/pytest_results.xml (regenerated — 79/79 passed)"
+  ],
+  "success_rate": {"backend": "100% (79/79, including 8 new deep-link flow tests)", "frontend": "100% for the requested Preview-screen verification (button presence, testIDs, copy, disabled state, no-crash on tap)"},
+  "seed_data_creation": "One IMCR draft was created per backend test module and per UI test; all cleaned up via DELETE /api/drafts/{id}. Two test drafts were removed at end of run (backend fixture teardown + UI script cleanup).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The ms-outlook://compose deep link and mailto: fallback are NATIVE-only paths (Linking on iOS/Android). On the Expo web preview, Linking.canOpenURL('ms-outlook://...') returns false and Linking.openURL('mailto:...') opens in a new tab/no-ops depending on browser — that's why the current web test only asserts 'button renders + tap does not crash'. To exercise the real deep link, install the Outlook mobile app on a device and use an Expo Go / dev build. All prior fixes (encoding charset, dropdown search reachable, manual-add row, countries newline in both /render and /render-html, Outlook 365 endpoint contracts) remain green in the full backend suite."
+}

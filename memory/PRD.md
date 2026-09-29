@@ -97,3 +97,10 @@ communication is opened in the device email app (Outlook/Mail) to send.
 - Fixed unreachable search bar in Business Application / Business Process dropdown: rebuilt SelectSheet to mirror the working CountrySheet (single BottomSheetView flex → fixed header with search on top → BottomSheetScrollView list; was BottomSheetView + BottomSheetFlatList siblings which pushed the search off-screen). snapPoint 85%. This also restores type-to-add so business processes (and products) can be entered manually.
 - Countries now render one-per-line in the email: _format_countries joins with "\n" (→ <br> in HTML via _esc); compose locked-value also shows one-per-line. Verified render-html contains Austria<br>Greece<br>Poland.
 - Verified: 71/71 backend tests + frontend flows (search reachable, manual add, filter, Validate & Lock).
+
+## Iteration 9 (2026-06) — Primary "Open in Outlook app" (mobile, no Azure)
+- User dropped Azure as the primary path; wants the already-signed-in Outlook MOBILE app. Added PRIMARY button "Open in Outlook app" (preview/[id].tsx, testID open-outlook-app-btn) that opens ms-outlook://compose?to&subject&body (plain-text body via /render), falls back to mailto:. No paste, no Azure. After open → afterDraftCreated (markSent + schedule reminders + navigate).
+- HARD LIMIT explained to user: Outlook mobile compose deep link is plain-text only (cannot carry HTML formatting). User accepted plain formatting for the one-tap flow.
+- Kept the Azure/Graph "Create formatted draft in Outlook 365" as SECONDARY button (create-draft-btn), shows "setup pending" until ENTRA IDs configured.
+- Added LSApplicationQueriesSchemes ["ms-outlook","mailto"] to app.json ios.infoPlist for canOpenURL.
+- Native-only: deep link works only on a real device with Outlook installed (no-ops on web preview). Verified 79/79 backend + both buttons render, no regressions.
