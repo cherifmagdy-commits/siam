@@ -14,7 +14,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#E61A27"
       },
       "package": "com.emergent.outlookformhub.lr30py",
       "googleServicesFile": "./google-services.json"
@@ -32,7 +32,7 @@
           "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#000000"
+          "backgroundColor": "#E61A27"
         }
       ],
       "expo-font",
@@ -43,7 +43,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/icon.png",
+          "icon": "./assets/images/adaptive-icon.png",
           "color": "#E61A27"
         }
       ]
