@@ -1,0 +1,30 @@
+{
+  "summary": "Backend-only verification of new Microsoft Graph / Outlook 365 integration in UNCONFIGURED state (ENTRA_TENANT_ID + ENTRA_CLIENT_ID intentionally empty). Added /app/backend/tests/test_outlook_integration.py with 10 focused tests covering all 6 review-request items plus one extra pre-lookup auth check. Full backend suite is 63/63 GREEN (10 new + 53 pre-existing regression). Verified endpoint contracts: (1) GET /api/outlook/config returns {configured:false, client_id:'', tenant_id:'', shared_mailbox:'dtps.it.continuity.mgt.team@cchellenic.com'}; (2) POST /api/auth/microsoft/exchange short-circuits with 503 'Outlook integration is not configured yet' before touching Microsoft; (3) POST /api/outlook/drafts/{draft_id} with NO Authorization header returns 401 'Sign in to Microsoft first'; (4) POST /api/outlook/drafts/{draft_id} with bogus 'Authorization: Bearer faketoken' returns 401 'Not signed in to Microsoft' (from _access_token session lookup); (5) GET /api/auth/microsoft/me with no bearer returns 401 'Bearer token required' and with bogus bearer returns 401 'Not signed in to Microsoft'; (6) Regression on GET /api/templates (exactly 8), GET /api/countries (>0), POST /api/drafts → GET /api/drafts/{id}/render and /render-html — HTML still contains BOTH <meta charset=\"utf-8\"> and <meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">, response bytes still carry raw UTF-8 middle-dot (0xC2 0xB7), and no mojibake artifacts ('Â·', 'â€', 'Ã¢', U+FFFD) are present. No real Microsoft OAuth was exercised; all short-circuits fire before external calls, exactly as designed for the unconfigured state.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_outlook_integration.py",
+    "/app/test_reports/pytest/pytest_outlook_integration.xml",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/outlook.py: exchange endpoint correctly guards on tenant+client+enc before calling Microsoft — good fast-fail with 503.",
+    "/app/backend/server.py line 936: outlook_create_draft() only enforces the 'Bearer ' prefix, then does draft/template lookup BEFORE calling _access_token(). This means an unknown draft_id with a bogus bearer returns 404 instead of 401. Not a bug (no info leak beyond existence of ids that are opaque UUIDs), but if the team wants tighter security, move the session validation before the DB lookup.",
+    "/app/backend/outlook.py line 155: the Graph POST uses `from: cfg['mailbox']` on a NEW message. Send-As on shared mailboxes via Graph typically requires the `from` to match a mailbox the signed-in user has SendAs on — that permission plus Full Access must be granted by IT. Error path (403) is already handled with a helpful message. Fine as-is.",
+    "/app/backend/outlook.py line 180: attaches create_shared_draft on `router` object AND stores it in module-level _HELPERS dict. server.py imports the module-level create_shared_draft wrapper which reads _HELPERS — this works but is a bit indirect. A direct import of the closure after register_outlook_routes() is called would be cleaner. Non-blocking.",
+    "/app/backend/.env: TOKEN_ENCRYPTION_KEY is committed with a real-looking Fernet key. If this repo is public, rotate before production. Also SHARED_MAILBOX hard-coded here matches the config endpoint — good.",
+    "Non-blocking: server.py still uses deprecated @app.on_event startup/shutdown (FastAPI recommends `lifespan`).",
+    "Minor: outlook_config() reports configured=True only when tenant+client+enc all present, but does NOT check SHARED_MAILBOX. Since the shared mailbox is hard-coded in .env this is fine, but consider requiring it in the configured check too."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_outlook_integration.py (new — 10 tests: 6 Outlook contract + 3 regression + 1 extra pre-lookup auth check)",
+    "/app/test_reports/pytest/pytest_outlook_integration.xml (new)",
+    "/app/test_reports/pytest/pytest_results.xml (regenerated — 63/63 passed)"
+  ],
+  "success_rate": {"backend": "100% (63/63, including 10 new Outlook tests)", "frontend": "not tested (backend-only request)"},
+  "seed_data_creation": "One draft created per test class for draft-dependent tests; each cleaned up via DELETE /api/drafts/{id} in fixture teardown. No leftover data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The Outlook integration is verified only in UNCONFIGURED state. To exercise the happy path (real Microsoft OAuth, actual draft creation in the shared mailbox), you need: (a) ENTRA_TENANT_ID and ENTRA_CLIENT_ID set in backend/.env from the corporate Azure app registration, (b) admin consent granted for Mail.ReadWrite.Shared + Mail.Send.Shared, (c) the signed-in user granted Full Access + Send As on dtps.it.continuity.mgt.team@cchellenic.com, and (d) a native Expo build (WebView PKCE flow — the corporate Azure app almost certainly disallows the container's preview redirect URI). The container preview cannot exercise real MSAL/Graph. All short-circuit behavior for the unconfigured path is proven correct at the API layer, and the pre-existing UTF-8/charset fix on /render-html is still holding."
+}

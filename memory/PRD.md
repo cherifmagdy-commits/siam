@@ -81,3 +81,19 @@ communication is opened in the device email app (Outlook/Mail) to send.
 
 ## Iteration 6 (2026-06) — Template encoding fix
 - Fixed UTF-8 mojibake in rendered template: header middle-dot '·' showed as 'Â·' and subject en-dash '–' as 'â€"'. Root cause: generated HTML had no charset declaration so WebView decoded UTF-8 as Latin-1. Added <meta charset="utf-8"> + Content-Type meta to _render_html() head in server.py. Verified 53/53 backend tests, byte-level clean.
+
+## Iteration 7 (2026-06) — Outlook 365 / Microsoft Graph "Create draft" flow
+- Replaced the copy-to-clipboard + mailto flow ENTIRELY with a true Outlook integration: the app creates a fully-formatted DRAFT in the shared mailbox dtps.it.continuity.mgt.team@cchellenic.com; user opens Outlook desktop and presses Send (no paste, no format loss). Target = Outlook desktop on laptop.
+- Auth: expo-auth-session PKCE (frontend/src/msauth.ts) → backend exchanges code (backend/outlook.py), stores refresh/access tokens encrypted (Fernet) in db.ms_tokens keyed by sha256(session). Scopes: openid profile offline_access User.Read Mail.ReadWrite.Shared Mail.Send.Shared.
+- Graph: POST /users/{shared-mailbox}/messages with HTML body + fixed from = shared mailbox (never client-supplied). 401/403 → clear error telling user IT must grant Full Access + Send As + admin consent.
+- Backend endpoints (all /api): GET /outlook/config, POST /auth/microsoft/exchange, GET /auth/microsoft/me, POST /outlook/drafts/{draft_id}.
+- Config via backend/.env: ENTRA_TENANT_ID, ENTRA_CLIENT_ID (BOTH EMPTY — user's IT must fill), SHARED_MAILBOX, TOKEN_ENCRYPTION_KEY (generated). Frontend fetches /outlook/config; button disabled + "not configured" until IDs present.
+- Redirect URI to register in Azure: native = frontend://oauth/callback ; web SPA = https://<deployed-domain>/oauth/callback.
+- HARD LIMITS: corporate OAuth does NOT work in Expo Go / web preview — needs a native build. Only creates a DRAFT (never sendMail).
+- New deps: expo-auth-session, expo-crypto. cryptography (backend, already present).
+- PENDING FROM USER/IT: tenant ID + client ID GUIDs, admin consent, then build. Send As on the shared mailbox already confirmed granted.
+
+## Iteration 8 (2026-06) — Compose dropdown + countries fixes
+- Fixed unreachable search bar in Business Application / Business Process dropdown: rebuilt SelectSheet to mirror the working CountrySheet (single BottomSheetView flex → fixed header with search on top → BottomSheetScrollView list; was BottomSheetView + BottomSheetFlatList siblings which pushed the search off-screen). snapPoint 85%. This also restores type-to-add so business processes (and products) can be entered manually.
+- Countries now render one-per-line in the email: _format_countries joins with "\n" (→ <br> in HTML via _esc); compose locked-value also shows one-per-line. Verified render-html contains Austria<br>Greece<br>Poland.
+- Verified: 71/71 backend tests + frontend flows (search reachable, manual add, filter, Validate & Lock).

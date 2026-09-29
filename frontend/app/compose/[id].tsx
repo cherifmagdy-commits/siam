@@ -260,7 +260,7 @@ export default function ComposeScreen() {
                   {locked ? (
                     <Text style={styles.lockedValue} testID={`locked-value-${field.key}`}>
                       {field.type === "countries"
-                        ? parseCountries(values[field.key]).join(", ") || "—"
+                        ? parseCountries(values[field.key]).join("\n") || "—"
                         : String(values[field.key] ?? "") || "—"}
                     </Text>
                   ) : field.type === "countries" ? (

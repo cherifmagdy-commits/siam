@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 import openpyxl
 import httpx
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, HTTPException, UploadFile, File
+from fastapi import APIRouter, FastAPI, HTTPException, UploadFile, File, Header
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
@@ -24,6 +24,7 @@ from seed_data import (
     PRODUCTS,
 )
 from templates_seed import STAGE_LABEL, STAGES, build_templates
+from outlook import register_outlook_routes, create_shared_draft as _create_shared_draft
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -542,7 +543,7 @@ def _format_countries(raw: str) -> str:
     try:
         names = _json.loads(raw)
         if isinstance(names, list):
-            return ", ".join(str(n) for n in names)
+            return "\n".join(str(n) for n in names)
     except Exception:
         pass
     return raw
@@ -927,6 +928,29 @@ async def contingency_lookup(product: Optional[str] = None, process: Optional[st
 async def root():
     return {"message": "OpsComm API"}
 
+
+@api_router.post("/outlook/drafts/{draft_id}")
+async def outlook_create_draft(draft_id: str, authorization: str = Header(default="")):
+    """Create the fully-formatted email as a DRAFT in the shared mailbox so the
+    user opens Outlook desktop and presses Send (no copy/paste, no format loss)."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Sign in to Microsoft first")
+    doc = await db.drafts.find_one({"id": draft_id, "deleted_at": None}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    template = await db.templates.find_one({"id": doc["template_id"]}, {"_id": 0})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    subject = _val(doc.get("values", {}), "subject") or doc.get("template_name", "")
+    html = _render_html(template, doc.get("values", {}))
+    to = await _compute_recipients(doc)
+    if not to:
+        raise HTTPException(status_code=400, detail="No recipients — select at least one country first")
+    result = await _create_shared_draft(authorization[7:], subject, to, html)
+    return {"subject": subject, "to": to, **result}
+
+
+register_outlook_routes(api_router, db)
 
 app.include_router(api_router)
 

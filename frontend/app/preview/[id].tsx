@@ -1,14 +1,14 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Copy, PaperPlaneTilt, UsersThree } from "phosphor-react-native";
+import { ArrowLeft, PaperPlaneTilt, SignOut, UsersThree } from "phosphor-react-native";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Linking, Platform, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, Text, TextInput, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fetchRenderedEmail, fetchRenderedHtml, useDraft, useMarkSent, useUpdateDraft } from "@/src/api";
-import * as Clipboard from "expo-clipboard";
+import { createOutlookDraft, useMicrosoftAuth } from "@/src/msauth";
 import { BrandMark } from "@/src/components/BrandMark";
 import { useToast } from "@/src/components/Toast";
 import { haptics } from "@/src/haptics";
@@ -32,9 +32,11 @@ export default function PreviewScreen() {
   const { data: draft } = useDraft(id);
   const updateDraft = useUpdateDraft(id);
   const markSent = useMarkSent(draft?.incident_id ?? "");
+  const ms = useMicrosoftAuth();
   const [productTeam, setProductTeam] = useState("");
   const [sre, setSre] = useState("");
   const [webHeight, setWebHeight] = useState(420);
+  const [sending, setSending] = useState(false);
 
   const { data: email, isLoading } = useQuery({
     queryKey: ["render", id],
@@ -64,69 +66,61 @@ export default function PreviewScreen() {
     qc.invalidateQueries({ queryKey: ["render-html", id] });
   };
 
-  const copyFormatted = async () => {
-    const data = htmlData ?? (await fetchRenderedHtml(id));
-    await Clipboard.setStringAsync(data.html, { inputFormat: Clipboard.StringFormat.HTML });
-    haptics.success();
-    toast("Formatted email copied — paste into the Outlook body");
+  const afterDraftCreated = async () => {
+    if (!draft) return;
+    const incidentId = draft.incident_id;
+    if (!incidentId) return;
+    try {
+      await markSent.mutateAsync(draft.id);
+    } catch {}
+    const title = draft.values?.title || email?.subject || "Incident";
+    const stageLabel = STAGE_LABEL[draft.stage];
+    if (draft.stage === "RESOLVED") {
+      await cancelIncidentReminders(incidentId);
+    } else {
+      await ensureNotificationPermission();
+      await scheduleIncidentReminders(
+        incidentId,
+        title,
+        stageLabel,
+        parseNextUpdate(draft.values?.next_update),
+      );
+    }
+    router.replace(`/incident/${incidentId}`);
   };
 
-  const openInOutlook = async () => {
-    if (!email || !draft) return;
-    haptics.heavy();
-    await updateDraft.mutateAsync({
-      values: { ...draft.values, product_team: productTeam, sre },
-    });
-    const fresh = await fetchRenderedEmail(id);
-    qc.setQueryData(["render", id], fresh);
-
-    // mailto can only carry plain text, so put the formatted template on the
-    // clipboard as rich HTML — the user pastes it into the Outlook body.
-    let copied = false;
-    try {
-      const freshHtml = await fetchRenderedHtml(id);
-      qc.setQueryData(["render-html", id], freshHtml);
-      await Clipboard.setStringAsync(freshHtml.html, { inputFormat: Clipboard.StringFormat.HTML });
-      copied = true;
-    } catch {}
-
-    const to = fresh.to.join(";");
-    const url =
-      `mailto:${encodeURIComponent(to)}` +
-      `?subject=${encodeURIComponent(fresh.subject)}`;
-    try {
-      const supported = await Linking.canOpenURL(url);
-      if (!supported) {
-        toast("No email app found on this device", "error");
-        return;
-      }
-      await Linking.openURL(url);
-    } catch {
-      toast("Could not open email app", "error");
+  const createDraftInOutlook = async () => {
+    if (!draft) return;
+    if (!ms.configured) {
+      toast("Outlook isn't set up yet — your IT needs to finish the Azure app registration.", "error");
       return;
     }
-    if (copied) toast("Formatted template copied — paste it into the Outlook body");
+    setSending(true);
+    haptics.heavy();
+    try {
+      // persist any manual recipients first so they're in the draft body/recipients
+      await updateDraft.mutateAsync({ values: { ...draft.values, product_team: productTeam, sre } });
 
-    // Mark the incident update as sent and schedule the follow-up reminder.
-    const incidentId = draft.incident_id;
-    if (incidentId) {
+      let session = await ms.ensureSession();
       try {
-        await markSent.mutateAsync(draft.id);
-      } catch {}
-      const title = draft.values?.title || fresh.subject || "Incident";
-      const stageLabel = STAGE_LABEL[draft.stage];
-      if (draft.stage === "RESOLVED") {
-        await cancelIncidentReminders(incidentId);
-      } else {
-        await ensureNotificationPermission();
-        await scheduleIncidentReminders(
-          incidentId,
-          title,
-          stageLabel,
-          parseNextUpdate(draft.values?.next_update),
-        );
+        await createOutlookDraft(id, session);
+      } catch (e: any) {
+        // session may have expired — sign in again once and retry
+        if (e?.status === 401) {
+          await ms.signOut();
+          session = await ms.signIn();
+          await createOutlookDraft(id, session);
+        } else {
+          throw e;
+        }
       }
-      router.replace(`/incident/${incidentId}`);
+      haptics.success();
+      toast(`Draft created in ${ms.sharedMailbox || "the shared mailbox"} — open Outlook on your laptop and press Send`);
+      await afterDraftCreated();
+    } catch (e: any) {
+      toast(e?.message || "Could not create the Outlook draft", "error");
+    } finally {
+      setSending(false);
     }
   };
 
@@ -236,13 +230,39 @@ export default function PreviewScreen() {
       )}
 
       <View style={[styles.footer, { height: footerHeight + insets.bottom, paddingBottom: insets.bottom + spacing.sm }]}>
-        <Pressable testID="copy-formatted-btn" style={styles.copyBtn} onPress={copyFormatted} disabled={!htmlData}>
-          <Copy size={18} weight="bold" color={colors.onSurface} />
-          <Text style={styles.copyText}>Copy formatted email</Text>
-        </Pressable>
-        <Pressable testID="open-outlook-btn" style={styles.sendBtn} onPress={openInOutlook} disabled={!email}>
-          <PaperPlaneTilt size={18} weight="fill" color={colors.onBrandPrimary} />
-          <Text style={styles.sendText}>Open in Outlook & paste</Text>
+        {ms.signedIn ? (
+          <View style={styles.acctRow}>
+            <Text style={styles.acctText} numberOfLines={1}>
+              {ms.account?.upn ? `Signed in as ${ms.account.upn}` : "Signed in to Microsoft 365"}
+            </Text>
+            <Pressable testID="ms-signout" hitSlop={8} onPress={ms.signOut} style={styles.signOutBtn}>
+              <SignOut size={14} color={colors.muted} />
+              <Text style={styles.signOutText}>Sign out</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Text style={styles.acctHint} numberOfLines={1}>
+            {ms.configured
+              ? `Creates a ready-to-send draft in ${ms.sharedMailbox}`
+              : "Outlook 365 not configured yet — ask IT to finish Azure setup"}
+          </Text>
+        )}
+        <Pressable
+          testID="create-draft-btn"
+          style={[styles.sendBtn, (!email || sending || !ms.configured) && { opacity: 0.5 }]}
+          onPress={createDraftInOutlook}
+          disabled={!email || sending || !ms.configured}
+        >
+          {sending ? (
+            <ActivityIndicator color={colors.onBrandPrimary} />
+          ) : (
+            <>
+              <PaperPlaneTilt size={18} weight="fill" color={colors.onBrandPrimary} />
+              <Text style={styles.sendText}>
+                {ms.signedIn ? "Create draft in Outlook" : "Sign in & create Outlook draft"}
+              </Text>
+            </>
+          )}
         </Pressable>
       </View>
     </View>
@@ -326,17 +346,14 @@ const useStyles = makeStyles((colors) => ({
     paddingVertical: spacing.md,
   },
   sendText: { fontSize: 16, fontWeight: "700", color: colors.onBrandPrimary },
-  copyBtn: {
+  acctRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.surfaceSecondary,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm + 2,
+    justifyContent: "space-between",
     marginBottom: spacing.sm,
   },
-  copyText: { fontSize: 15, fontWeight: "700", color: colors.onSurface },
+  acctText: { flex: 1, fontSize: 12, color: colors.onSurfaceSecondary, marginRight: spacing.sm },
+  acctHint: { fontSize: 12, color: colors.muted, marginBottom: spacing.sm },
+  signOutBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+  signOutText: { fontSize: 12, fontWeight: "600", color: colors.muted },
 }));

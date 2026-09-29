@@ -1,0 +1,39 @@
+{
+  "summary": "Verified all 3 reported Compose bug fixes end-to-end (backend + frontend mobile web preview). BACKEND: added /app/backend/tests/test_compose_dropdowns_and_countries.py (8 tests, 100% green). Full suite is 71/71 passing. Confirmed: (1) GET/POST /api/business-processes and /api/products work for the SelectSheet type-to-add flow; POST of a new Business Process persists and is returned by the subsequent GET list; (2) GET /api/drafts/{id}/render-html now joins countries with <br> — response body literally contains 'Austria<br>Greece<br>Poland' (no comma-joined regression); (3) GET /api/drafts/{id}/render (plain text) contains 'Austria\\nGreece\\nPoland'; (4) Full compose smoke — POST /drafts → PUT values → GET /render-html still works and includes subject + countries. FRONTEND (mobile viewport 390x844, Expo web preview): tapped IMCR template card → compose loaded with all section cards. Bug #1 FIXED: opening dropdown-business_application and dropdown-business_process shows a bottom sheet with the search box (testID select-sheet-search) fully within viewport at y=197 (was previously pushed off/covered). Bug #2 FIXED: typing a new name in the search shows the 'Add \"<name>\"' create row (testID select-sheet-create); tapping it created 'Mna PTs 06' and the dropdown immediately displayed that value. Filter behavior confirmed by inspecting search input .value + the rendered [data-testid^=select-option-*] set (0 matches for 'SAP' is legitimate — no seeded Business Apps contain that substring; Add-row shown as expected). Regression: Validate & Lock on Subject transitions to Locked state with edit-subject + locked-value-subject and 1/7 progress. No red-screen errors, only pre-existing web-only warnings (expo-notifications on web, props.pointerEvents deprecated, shadow* style props deprecated) — all cosmetic and non-blocking for the current task.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "React-native-web deprecation warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Non-blocking on web but should be migrated. Reference: search codebase for shadowColor/shadowOffset/shadowOpacity/shadowRadius."},
+      {"component": "props.pointerEvents", "issue": "React-native-web deprecation warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Non-blocking. Reference: search for pointerEvents= prop usages in components (likely inside @gorhom/bottom-sheet backdrop or a local component)."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_compose_dropdowns_and_countries.py",
+    "/app/test_reports/pytest/pytest_compose_dropdowns.xml",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "No functional action required — all 3 reported bugs are fixed and verified.",
+    "Optional cleanup: migrate deprecated shadow* style props to boxShadow and props.pointerEvents to style.pointerEvents to silence react-native-web warnings.",
+    "Optional: server.py still uses deprecated @app.on_event startup/shutdown — FastAPI recommends the lifespan context manager (carried over from previous iteration)."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/src/components/SelectSheet.tsx: correctly rebuilt as single BottomSheetView flex container with fixed header (search on top) + BottomSheetScrollView list — mirrors the working CountrySheet pattern. snapPoints=['85%'] and keyboardBehavior='interactive' will keep the search reachable when the keyboard opens on device.",
+    "/app/frontend/src/components/SelectSheet.tsx line 91: correctly falls back to plain TextInput on web (BottomSheetTextInput is not compatible with react-native-web). Verified in browser — search receives focus and input events.",
+    "/app/backend/server.py _format_countries + _esc: joins with '\\n' then _esc replaces \\n → <br>. Verified: HTML body contains 'Austria<br>Greece<br>Poland'. Plain-text /render keeps raw '\\n'. Clean, minimal fix.",
+    "/app/backend/server.py: still uses deprecated @app.on_event startup/shutdown (FastAPI recommends `lifespan`). Non-blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_compose_dropdowns_and_countries.py (new — 8 tests)",
+    "/app/test_reports/pytest/pytest_compose_dropdowns.xml (new)",
+    "/app/test_reports/pytest/pytest_results.xml (regenerated — 71/71 passed)"
+  ],
+  "success_rate": {"backend": "100% (71/71, including 8 new bug-fix regression tests)", "frontend": "100% for the 3 targeted bugs + Validate & Lock regression on Expo web preview (mobile viewport)"},
+  "seed_data_creation": "Test-created data (TEST_BP_*, TEST_APP_*, and one draft per class) is cleaned up in the same test via DELETE. One draft created and deleted per class fixture. During UI testing, one custom Business Process 'Mna PTs 06' was created via the sheet — persists in the business_processes collection (harmless test data with 'custom: true'; safe to leave or delete).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All 3 reported Compose bugs are fixed. SelectSheet rebuild + _format_countries newline fix hold. The Outlook integration (from iteration 5) remains untouched by these changes — only the compose UI and countries formatter were modified. If any further compose changes land, re-run backend/tests/test_compose_dropdowns_and_countries.py and browse to /compose/{id} on mobile viewport to confirm dropdown-business_application and dropdown-business_process still open with select-sheet-search visible at the top."
+}

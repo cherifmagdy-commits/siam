@@ -1,7 +1,7 @@
 import {
   BottomSheetBackdrop,
-  BottomSheetFlatList,
   BottomSheetModal,
+  BottomSheetScrollView,
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
@@ -93,36 +93,40 @@ export const SelectSheet = forwardRef<SelectSheetRef, Props>(function SelectShee
   return (
     <BottomSheetModal
       ref={sheetRef}
-      snapPoints={["70%"]}
+      snapPoints={["85%"]}
       enablePanDownToClose
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
       backdropComponent={renderBackdrop}
       handleIndicatorStyle={{ backgroundColor: colors.borderStrong }}
       backgroundStyle={{ backgroundColor: colors.surface }}
     >
-      <BottomSheetView style={styles.header}>
-        <Text style={styles.title}>{title}</Text>
-        <View style={styles.searchBox}>
-          <MagnifyingGlass size={18} color={colors.muted} />
-          <SearchInput
-            testID="select-sheet-search"
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search or type to add…"
-            placeholderTextColor={colors.muted}
-            style={styles.searchInput}
-            autoCapitalize="none"
-          />
+      <BottomSheetView style={styles.sheet}>
+        {/* Fixed header with search on top */}
+        <View style={styles.header}>
+          <Text style={styles.title}>{title}</Text>
+          <View style={styles.searchBox}>
+            <MagnifyingGlass size={18} color={colors.muted} />
+            <SearchInput
+              testID="select-sheet-search"
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search or type to add…"
+              placeholderTextColor={colors.muted}
+              style={styles.searchInput}
+              autoCapitalize="none"
+            />
+          </View>
         </View>
-      </BottomSheetView>
-      <BottomSheetFlatList
-        data={filtered}
-        keyExtractor={(item) => item}
-        contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
-        keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={
-          query.trim() && !exactMatch ? (
+
+        {/* Scrollable list */}
+        <BottomSheetScrollView
+          style={styles.list}
+          contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
+          keyboardShouldPersistTaps="handled"
+        >
+          {query.trim() && !exactMatch ? (
             <Pressable
               testID="select-sheet-create"
               style={styles.createRow}
@@ -136,39 +140,45 @@ export const SelectSheet = forwardRef<SelectSheetRef, Props>(function SelectShee
                 {creating ? "Adding…" : `Add “${query.trim()}”`}
               </Text>
             </Pressable>
-          ) : null
-        }
-        renderItem={({ item }) => {
-          const isSelected = item === selected;
-          return (
-            <Pressable
-              testID={`select-option-${item}`}
-              style={styles.row}
-              onPress={() => handleSelect(item)}
-            >
-              <Text style={[styles.rowText, isSelected && styles.rowTextSelected]} numberOfLines={2}>
-                {item}
-              </Text>
-              {isSelected ? <Check size={18} weight="bold" color={colors.onSurface} /> : null}
-            </Pressable>
-          );
-        }}
-        ListEmptyComponent={
-          !query.trim() ? (
+          ) : null}
+
+          {filtered.map((item) => {
+            const isSelected = item === selected;
+            return (
+              <Pressable
+                key={item}
+                testID={`select-option-${item}`}
+                style={styles.row}
+                onPress={() => handleSelect(item)}
+              >
+                <Text style={[styles.rowText, isSelected && styles.rowTextSelected]} numberOfLines={2}>
+                  {item}
+                </Text>
+                {isSelected ? <Check size={18} weight="bold" color={colors.onSurface} /> : null}
+              </Pressable>
+            );
+          })}
+
+          {filtered.length === 0 && !query.trim() ? (
             <Text style={styles.empty}>No items yet — type above to add one.</Text>
-          ) : null
-        }
-      />
+          ) : null}
+        </BottomSheetScrollView>
+      </BottomSheetView>
     </BottomSheetModal>
   );
 });
 
 const useStyles = makeStyles((colors) => ({
+  sheet: { flex: 1 },
   header: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
     gap: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+    backgroundColor: colors.surface,
   },
+  list: { flex: 1 },
   title: {
     fontSize: 18,
     fontWeight: "700",
