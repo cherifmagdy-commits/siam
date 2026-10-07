@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   TemplateField,
   TemplateSection,
+  Contingency,
   fetchContingency,
   useCountries,
   useCreateCountry,
@@ -35,6 +36,7 @@ import {
   useUpdateDraft,
 } from "@/src/api";
 import { CountrySheet, CountrySheetRef } from "@/src/components/CountrySheet";
+import { ContingencyPickerSheet, ContingencyPickerRef } from "@/src/components/ContingencyPickerSheet";
 import { SelectSheet, SelectSheetRef } from "@/src/components/SelectSheet";
 import { StatusPill } from "@/src/components/StatusPill";
 import { useToast } from "@/src/components/Toast";
@@ -65,6 +67,11 @@ export default function ComposeScreen() {
 
   const sheetRef = useRef<SelectSheetRef>(null);
   const countrySheetRef = useRef<CountrySheetRef>(null);
+  const contingencyPickerRef = useRef<ContingencyPickerRef>(null);
+  const [contingencyChoices, setContingencyChoices] = useState<{ product: string; rows: Contingency[] }>({
+    product: "",
+    rows: [],
+  });
   const hydrated = useRef(false);
   const stateRef = useRef({ values, validations });
   stateRef.current = { values, validations };
@@ -144,27 +151,38 @@ export default function ComposeScreen() {
     return m;
   }, [sections]);
 
-  // When a Business Application is picked, pull its process / contingency owner
-  // from the contingency sheet and fill the matching fields (only if unlocked).
+  // Fill business_process / crisis lead / contingency from one contingency row
+  // (only into fields whose section is still unlocked).
+  const applyContingencyRow = (row: Contingency) => {
+    const candidates: [string, string][] = [];
+    if (row.process) candidates.push(["business_process", row.process]);
+    if (row.owner) candidates.push(["crisis_lead", row.owner]);
+    if (row.failed_system) candidates.push(["contingency", `Failed system: ${row.failed_system}`]);
+    const locks = stateRef.current.validations;
+    const apply = candidates.filter(([k]) => fieldSection[k] && !locks[fieldSection[k]]);
+    if (!apply.length) return;
+    setValues((prev) => {
+      const next = { ...prev };
+      apply.forEach(([k, v]) => (next[k] = v));
+      return next;
+    });
+    haptics.success();
+    toast(`Auto-filled ${apply.length} field${apply.length > 1 ? "s" : ""} from contingency data`);
+  };
+
+  // When a Business Application is picked, look up its contingency rows. If the
+  // app maps to a single process, auto-fill it; if it maps to several, open a
+  // picker so the user chooses which process (and its failed system / owner) applies.
   const autofillFromContingency = async (product: string) => {
     try {
       const rows = await fetchContingency(product);
       if (!rows.length) return;
-      const row = rows[0];
-      const candidates: [string, string][] = [];
-      if (row.process) candidates.push(["business_process", row.process]);
-      if (row.owner) candidates.push(["crisis_lead", row.owner]);
-      if (row.failed_system) candidates.push(["contingency", `Failed system: ${row.failed_system}`]);
-      const locks = stateRef.current.validations;
-      const apply = candidates.filter(([k]) => fieldSection[k] && !locks[fieldSection[k]]);
-      if (!apply.length) return;
-      setValues((prev) => {
-        const next = { ...prev };
-        apply.forEach(([k, v]) => (next[k] = v));
-        return next;
-      });
-      haptics.success();
-      toast(`Auto-filled ${apply.length} field${apply.length > 1 ? "s" : ""} from contingency data`);
+      if (rows.length === 1) {
+        applyContingencyRow(rows[0]);
+        return;
+      }
+      setContingencyChoices({ product, rows });
+      contingencyPickerRef.current?.open();
     } catch {}
   };
 
@@ -399,6 +417,13 @@ export default function ComposeScreen() {
         onCreate={async (name) => {
           await createCountry.mutateAsync({ name });
         }}
+      />
+
+      <ContingencyPickerSheet
+        ref={contingencyPickerRef}
+        product={contingencyChoices.product}
+        rows={contingencyChoices.rows}
+        onSelect={applyContingencyRow}
       />
     </View>
   );

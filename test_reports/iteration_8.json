@@ -1,0 +1,29 @@
+{
+  "summary": "ContingencyPickerSheet feature verified end-to-end. Backend /api/contingency returns correct row counts (SFA=2, Master Data Platform=4, Dynamic Routing=1, Contact Center=1, Payroll=0, Intranet=0, empty query=[]). Frontend: no 'Element type is invalid' red screen (GitBranch icon fix holds). Picker opens titled 'Choose business process' with options testID contingency-option-0/1 and subtitle 'Failed system: ... · Owner: ...'. Selecting option 0 for SFA fills business_process='Business Developers take orders offline', crisis_lead='Svetlana Lada', contingency='Failed system: SFA' and shows toast 'Auto-filled 3 fields from contingency data'. Dynamic Routing (single-process) skips picker and auto-fills directly. Payroll (no mapping) opens no picker and does not crash. Regression: select-sheet-search reachable, validate-subject button renders, preview-screen buttons open-outlook-app-btn and create-draft-btn render, countries render one-per-line in render-html (<br> separated).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_contingency_picker.py",
+    "/app/test_reports/pytest/pytest_contingency_picker.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "applyContingencyRow respects locked sections (good) — unlocked only.",
+    "contingencyChoices state is kept in-screen; no leak between selects.",
+    "Picker key uses `${row.process}-${i}` which safely disambiguates duplicate Customer management rows for Master Data Platform."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_contingency_picker.py"
+  ],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% (4/4 flows)"},
+  "seed_data_creation": "None. Used seeded contingency map rows (SFA x2, Dynamic Routing x1, Contact Center x1, Payroll x0, Master Data Platform x4). One TEST_ draft was created and deleted inside render-html regression test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend regression file is /app/backend/tests/test_contingency_picker.py (11 assertions). Frontend flow is: create IMCR IDENTIFIED draft via POST /api/drafts, navigate /compose/{id}, open dropdown-business_application, type in select-sheet-search, tap select-option-<name>. Picker rows have testID contingency-option-{0..n}. Subtitle format is 'Failed system: X  ·  Owner: Y'. ContingencyPickerSheet imports GitBranch (not Path) — do not revert.",
+  "rca_of_issue": "N/A — reviewed previous crash fix (Path → GitBranch rename in ContingencyPickerSheet.tsx line 7). Loaded /compose/{id} with the sheet mounted and confirmed no render error."
+}
