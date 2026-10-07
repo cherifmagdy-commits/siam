@@ -1,0 +1,30 @@
+{
+  "summary": "Backend-only testing of updated GET /api/contingency/export (all-applications left-join: 150 apps, 6 columns incl. 'Has Contingency Plan'). Rewrote /app/backend/tests/test_contingency_export.py to the NEW spec (headers, freeze_panes A2, red fill E61A27, row coverage: 150 distinct apps, 37 Yes, 122 No, 159 total, blank fields on 'No' rows, populated on 'Yes'). All 9 tests pass. Regression suite test_contingency_picker.py (11 tests) also passes — /api/products=150, /api/contingency?product=SFA returns 2 rows, multi-process picker endpoints unaffected, render-html countries one-per-line via <br>. No TEST_/QA_ catalog pollution introduced (only ephemeral draft created & deleted).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_contingency_export.py",
+    "/app/test_reports/pytest/pytest_contingency_export.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py contingency_export: sort key is (platform, name) which the spec doesn't mandate; previous spec was (app, process). Order isn't asserted in the new tests, acceptable.",
+    "contingency_export also appends orphan contingency rows whose product is not in the catalog (defensive); currently none exist (all 28 cmap products are in PRODUCTS), so count stays at 159."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_contingency_export.py"
+  ],
+  "success_rate": {"backend": "100% (9/9 export + 11/11 picker regressions)", "frontend": "N/A (skipped per request)"},
+  "seed_data_creation": "None. One ephemeral IMCR draft was created and deleted inside test_render_html_countries_newline (cleanup in finally block).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Export now has 6 columns [Platform, Business Application, Business Process, Contingency Plan (Failed System), Owner, Has Contingency Plan], 159 data rows, freeze_panes A2, header fill E61A27. 150 products, 37 cmap rows (28 distinct), 122 apps without plan. Tests live at /app/backend/tests/test_contingency_export.py."
+}

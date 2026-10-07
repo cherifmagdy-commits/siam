@@ -1,9 +1,13 @@
 import * as DocumentPicker from "expo-document-picker";
-import { FileXls, MagnifyingGlass, Plus, TrashSimple } from "phosphor-react-native";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
+import { FileArrowDown, FileXls, MagnifyingGlass, Plus, TrashSimple } from "phosphor-react-native";
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Linking,
+  Platform,
   Pressable,
   Text,
   TextInput,
@@ -12,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  contingencyExportUrl,
   importExcel,
   useCreateCountry,
   useCreateProcess,
@@ -42,6 +47,7 @@ export default function LibraryScreen() {
   const [tab, setTab] = useState<Tab>("products");
   const [query, setQuery] = useState("");
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const { data: products, isLoading: pLoading } = useProducts();
   const { data: processes, isLoading: prLoading } = useProcesses();
@@ -120,6 +126,34 @@ export default function LibraryScreen() {
     }
   };
 
+  // Export the Application -> Business Process -> Contingency plan mapping as .xlsx.
+  const onExport = async () => {
+    setExporting(true);
+    haptics.selection();
+    try {
+      if (Platform.OS === "web") {
+        await Linking.openURL(contingencyExportUrl);
+        toast("Downloading contingency mapping…");
+        return;
+      }
+      const dest = `${FileSystem.cacheDirectory}contingency_mapping.xlsx`;
+      const { uri } = await FileSystem.downloadAsync(contingencyExportUrl, dest);
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          dialogTitle: "Contingency mapping",
+          UTI: "org.openxmlformats.spreadsheetml.sheet",
+        });
+      } else {
+        toast("Sharing isn't available on this device", "error");
+      }
+    } catch (e: any) {
+      toast(e?.message ?? "Export failed", "error");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
@@ -158,6 +192,30 @@ export default function LibraryScreen() {
                 </Text>
                 <Text style={styles.importSub}>
                   Adds applications & processes from an .xlsx sheet
+                </Text>
+              </View>
+            </Pressable>
+
+            {/* Export contingency mapping */}
+            <Pressable
+              testID="export-contingency-btn"
+              style={styles.exportCard}
+              onPress={onExport}
+              disabled={exporting}
+            >
+              <View style={styles.exportIcon}>
+                {exporting ? (
+                  <ActivityIndicator color={colors.brandPrimary} />
+                ) : (
+                  <FileArrowDown size={22} weight="fill" color={colors.brandPrimary} />
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.exportTitle}>
+                  {exporting ? "Preparing…" : "Export contingency mapping"}
+                </Text>
+                <Text style={styles.exportSub}>
+                  Application → business process → contingency plan (.xlsx)
                 </Text>
               </View>
             </Pressable>
@@ -276,6 +334,26 @@ const useStyles = makeStyles((colors) => ({
   },
   importTitle: { fontSize: fontSize.lg, fontWeight: "700", color: colors.onBrandSecondary },
   importSub: { fontSize: fontSize.sm, color: colors.onBrandSecondary, opacity: 0.7, marginTop: 2 },
+  exportCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.surfaceTertiary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+  },
+  exportIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  exportTitle: { fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface },
+  exportSub: { fontSize: fontSize.sm, color: colors.muted, marginTop: 2 },
   segment: {
     flexDirection: "row",
     backgroundColor: colors.surfaceTertiary,

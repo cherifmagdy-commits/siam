@@ -8,9 +8,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import openpyxl
+import openpyxl.styles
+import openpyxl.utils
 import httpx
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, HTTPException, UploadFile, File, Header
+from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
@@ -922,6 +925,89 @@ async def contingency_lookup(product: Optional[str] = None, process: Optional[st
         return []
     cursor = db.contingency_map.find(query, {"_id": 0})
     return await cursor.to_list(50)
+
+
+@api_router.get("/contingency/export")
+async def contingency_export():
+    """Export the full Application → Business Process → Contingency plan mapping as .xlsx.
+
+    Includes EVERY application (not only those with a contingency plan). Apps with no
+    contingency row are still listed, with blank process/plan and 'No' in the flag column,
+    so the application↔business-process mapping can be confirmed end-to-end.
+    """
+    products = await db.products.find({}, {"_id": 0}).to_list(2000)
+    cont = await db.contingency_map.find({}, {"_id": 0}).to_list(2000)
+
+    by_prod: Dict[str, List[Dict[str, Any]]] = {}
+    for c in cont:
+        by_prod.setdefault(c.get("product", ""), []).append(c)
+
+    out: List[List[str]] = []
+    seen = set()
+    for p in sorted(products, key=lambda x: (str(x.get("platform", "")).lower(), str(x.get("name", "")).lower())):
+        name = p.get("name", "")
+        platform = p.get("platform", "")
+        seen.add(name)
+        matches = by_prod.get(name, [])
+        if matches:
+            for c in matches:
+                out.append([platform, name, c.get("process", ""), c.get("failed_system", ""), c.get("owner", ""), "Yes"])
+        else:
+            out.append([platform, name, "", "", "", "No"])
+    # contingency rows whose application is not in the product catalog — don't lose them
+    for prod_name, matches in sorted(by_prod.items(), key=lambda x: x[0].lower()):
+        if prod_name in seen:
+            continue
+        for c in matches:
+            out.append(["", prod_name, c.get("process", ""), c.get("failed_system", ""), c.get("owner", ""), "Yes"])
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Contingency Mapping"
+    headers = [
+        "Platform",
+        "Business Application",
+        "Business Process",
+        "Contingency Plan (Failed System)",
+        "Owner",
+        "Has Contingency Plan",
+    ]
+    ws.append(headers)
+
+    header_fill = openpyxl.styles.PatternFill("solid", fgColor="E61A27")
+    header_font = openpyxl.styles.Font(bold=True, color="FFFFFF")
+    thin = openpyxl.styles.Side(style="thin", color="D9D9D9")
+    border = openpyxl.styles.Border(left=thin, right=thin, top=thin, bottom=thin)
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = openpyxl.styles.Alignment(horizontal="left", vertical="center")
+        cell.border = border
+
+    muted_fill = openpyxl.styles.PatternFill("solid", fgColor="FBE9EA")
+    for r in out:
+        ws.append(r)
+        if r[5] == "No":
+            ws.cell(row=ws.max_row, column=6).fill = muted_fill
+
+    widths = [26, 38, 46, 30, 22, 20]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    for row in ws.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = openpyxl.styles.Alignment(vertical="top", wrap_text=True)
+            cell.border = border
+    ws.freeze_panes = "A2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"contingency_mapping_{datetime.now(timezone.utc).strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @api_router.get("/")

@@ -11,7 +11,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.emergent.outlookformhub.lr30py",
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["ms-outlook", "mailto"]
+        "LSApplicationQueriesSchemes": [
+          "ms-outlook",
+          "mailto"
+        ]
       }
     },
     "android": {
@@ -49,7 +52,8 @@
           "icon": "./assets/images/adaptive-icon.png",
           "color": "#E61A27"
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true

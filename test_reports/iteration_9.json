@@ -1,0 +1,29 @@
+{
+  "summary": "Contingency Excel export feature verified end-to-end. Backend: GET /api/contingency/export returns 200 with Content-Type application/vnd.openxmlformats-officedocument.spreadsheetml.sheet and Content-Disposition attachment filename=contingency_mapping_YYYYMMDD.xlsx. Parsed with openpyxl: sheet 'Contingency Mapping', header row ['Business Application','Business Process','Contingency Plan (Failed System)','Owner'] with red fill (E61A27), 37 data rows (matches CONTINGENCY_MAP seed), rows sorted case-insensitively by application then process, freeze_panes='A2'. Regression: /api/contingency?product=SFA returns 2 rows; /api/contingency with no params returns []; /products /business-processes /countries /templates all 200; render-html emits Austria<br>Italy<br>Poland (countries one-per-line). Frontend: Library tab renders both import-excel-btn and export-contingency-btn cards, export card positioned BELOW import card (y 184 vs 96), card text 'Export contingency mapping / Application → business process → contingency plan (.xlsx)'. Tapping the export card on web triggers Linking.openURL (popup opened to export URL) + 'Downloading contingency mapping…' toast; no crash — library-title still visible and segment toggles continue to work. Native share path intentionally not exercised in web preview per agent note.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_contingency_export.py",
+    "/app/test_reports/pytest/pytest_contingency_export.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:972 uses datetime.utcnow() (deprecated in Py 3.12+); consider datetime.now(timezone.utc).strftime(...) for consistency with now_iso().",
+    "contingency/export loads all 37 rows into memory and streams via BytesIO — acceptable at this size; if the dataset grows, consider openpyxl write_only mode.",
+    "library.tsx:140 uses expo-file-system/legacy downloadAsync; stable in SDK 57 per agent note (no action needed)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_contingency_export.py"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% (card renders, order correct, tap triggers download + toast, no crash, segments regression OK)"},
+  "seed_data_creation": "None persistent. Created and deleted one TEST_ draft inside render-html regression test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend regression file for export is /app/backend/tests/test_contingency_export.py (6 tests). Expected export row count is 37 — update EXPECTED_ROW_COUNT if seed_data.CONTINGENCY_MAP changes. Frontend testID for the export card is export-contingency-btn (Library tab). Native share path (expo-sharing) cannot be exercised in web preview; only the web Linking.openURL branch is verifiable here.",
+  "rca_of_issue": "N/A — feature works as specified."
+}
