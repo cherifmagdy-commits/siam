@@ -24,6 +24,18 @@ interface Props {
   onSelect: (row: Contingency) => void;
 }
 
+// Build a readable subtitle: CP ID + status for master rows, failed system for
+// legacy rows, plus owner and scope where available.
+function rowMeta(row: Contingency): string {
+  const parts: string[] = [];
+  if (row.cp_id) parts.push(`${row.cp_id} · ${row.mapping_status ?? ""}`.trim());
+  else if (row.mapping_status) parts.push(row.mapping_status);
+  else if (row.failed_system) parts.push(`Failed system: ${row.failed_system}`);
+  if (row.owner) parts.push(`Owner: ${row.owner}`);
+  if (row.countries_scope) parts.push(`Scope: ${row.countries_scope}`);
+  return parts.join("  ·  ");
+}
+
 export const ContingencyPickerSheet = forwardRef<ContingencyPickerRef, Props>(
   function ContingencyPickerSheet({ product, rows, onSelect }, ref) {
     const sheetRef = useRef<BottomSheetModal>(null);
@@ -83,12 +95,10 @@ export const ContingencyPickerSheet = forwardRef<ContingencyPickerRef, Props>(
                 </View>
                 <View style={styles.rowBody}>
                   <Text style={styles.process} numberOfLines={3}>
-                    {row.process}
+                    {row.process || "Business process not identified"}
                   </Text>
-                  <Text style={styles.meta} numberOfLines={2}>
-                    {row.failed_system ? `Failed system: ${row.failed_system}` : ""}
-                    {row.failed_system && row.owner ? "  ·  " : ""}
-                    {row.owner ? `Owner: ${row.owner}` : ""}
+                  <Text style={styles.meta} numberOfLines={3}>
+                    {rowMeta(row)}
                   </Text>
                 </View>
                 <CaretRight size={18} color={colors.muted} />

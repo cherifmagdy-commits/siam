@@ -27,7 +27,9 @@ from seed_data import (
     PRODUCTS,
 )
 from templates_seed import STAGE_LABEL, STAGES, build_templates
+from master_mapping_seed import MASTER_CONTINGENCY, MASTER_PRODUCTS, MASTER_PROCESSES
 from outlook import register_outlook_routes, create_shared_draft as _create_shared_draft
+from maintenance import register_maintenance_routes
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -155,6 +157,36 @@ async def seed_database():
         t["id"] = t["key"]
         await db.templates.replace_one({"key": t["key"]}, t, upsert=True)
     logger.info("Seeded %d templates", len(templates))
+
+    await seed_master_mapping()
+
+
+async def seed_master_mapping():
+    """Idempotently add the authoritative IT Contingency Master Mapping on top of
+    the existing data (runs every startup; applies to existing and fresh DBs)."""
+    # applications
+    for p in MASTER_PRODUCTS:
+        existing = await db.products.find_one({"name": p["name"], "deleted_at": None})
+        if not existing:
+            await db.products.insert_one({
+                "id": new_id(), "name": p["name"], "platform": p["platform"],
+                "custom": False, "deleted_at": None, "created_at": now_iso(),
+            })
+    # business processes
+    for name in MASTER_PROCESSES:
+        existing = await db.business_processes.find_one({"name": name, "deleted_at": None})
+        if not existing:
+            await db.business_processes.insert_one({
+                "id": new_id(), "name": name, "custom": False,
+                "deleted_at": None, "created_at": now_iso(),
+            })
+    # contingency rows (keyed by product + cp_id + source so they aren't duplicated)
+    for m in MASTER_CONTINGENCY:
+        key = {"product": m["product"], "cp_id": m.get("cp_id", ""), "source": "master"}
+        await db.contingency_map.update_one(
+            key, {"$set": m, "$setOnInsert": {"id": new_id()}}, upsert=True
+        )
+    logger.info("Seeded %d master contingency rows", len(MASTER_CONTINGENCY))
 
 
 @app.on_event("startup")
@@ -942,6 +974,14 @@ async def contingency_export():
     for c in cont:
         by_prod.setdefault(c.get("product", ""), []).append(c)
 
+    def _plan_cell(c: Dict[str, Any]) -> str:
+        return (
+            c.get("contingency_text")
+            or c.get("procedure_name")
+            or c.get("failed_system")
+            or ""
+        )
+
     out: List[List[str]] = []
     seen = set()
     for p in sorted(products, key=lambda x: (str(x.get("platform", "")).lower(), str(x.get("name", "")).lower())):
@@ -951,7 +991,8 @@ async def contingency_export():
         matches = by_prod.get(name, [])
         if matches:
             for c in matches:
-                out.append([platform, name, c.get("process", ""), c.get("failed_system", ""), c.get("owner", ""), "Yes"])
+                plan = _plan_cell(c)
+                out.append([platform, name, c.get("process", ""), plan, c.get("owner", ""), "Yes" if plan else "No"])
         else:
             out.append([platform, name, "", "", "", "No"])
     # contingency rows whose application is not in the product catalog — don't lose them
@@ -959,7 +1000,8 @@ async def contingency_export():
         if prod_name in seen:
             continue
         for c in matches:
-            out.append(["", prod_name, c.get("process", ""), c.get("failed_system", ""), c.get("owner", ""), "Yes"])
+            plan = _plan_cell(c)
+            out.append(["", prod_name, c.get("process", ""), plan, c.get("owner", ""), "Yes" if plan else "No"])
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -1037,6 +1079,7 @@ async def outlook_create_draft(draft_id: str, authorization: str = Header(defaul
 
 
 register_outlook_routes(api_router, db)
+register_maintenance_routes(api_router, db, _compute_recipients)
 
 app.include_router(api_router)
 

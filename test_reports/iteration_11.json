@@ -1,0 +1,36 @@
+{
+  "summary": "Both backend + frontend tested for the new IT Maintenance Builder module and master-mapping regressions. Backend: 18/18 tests pass in new /app/backend/tests/test_maintenance.py — maintenance CRUD (list/create/get/update/delete-soft), render-html (PLANNED MAINTENANCE caps, heading, window title, HIGH IMPORTANCE chip, 'Name | https://url' linkification, DTPS+CCHBC logo data URIs), render (subject starts with 'Planned Maintenance –', recipients resolve from saved countries, body contains window title), mark-sent sets sent_at, and 404 handling. Regressions: /api/contingency?product=Genesys returns rich master fields (cp_id, contingency_text, owner, mapping_status); /api/contingency?product=SIRVIS returns row with blank contingency_text (gap app); /api/contingency/export returns .xlsx with 6 columns + 162 distinct apps incl. 'SAP S/4 HANA ERP Cluster 1 (P02) / MES' + SIRVIS flagged 'No'; dropdown endpoints /products,/business-processes,/countries,/templates all 200 + non-empty. Frontend: Maintenance tab appears in bottom tab bar; empty-state + 'New maintenance' creates and navigates to /maintenance/{id}; builder renders Message/Distribution/Maintenance windows sections, 'Add maintenance window' adds Window 1 with Title/Starts/Ends/Timezone chips (CET/CEST/EET/EEST/UTC)/User impact chips; country picker modal opens with all countries; Preview screen shows subject 'Planned Maintenance – Maintenance Schedule', recipient count, 'Open in Outlook app' + 'Copy formatted email' buttons, and the expected web-fallback placeholder for the WebView. Cleaned up all test maintenance docs after run.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/products", "issue": "Problem statement said 'products count stays 150' but after master-mapping seed the actual count is 162 (150 base PRODUCTS + 12 net-new MASTER_PRODUCTS; 1 overlap). Behaviour is correct and idempotent; the spec number is stale. Tests updated to expect 162."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_maintenance.py",
+    "/app/test_reports/pytest/pytest_maintenance.xml"
+  ],
+  "action_items": [
+    "No code change required. Optional: update any user-facing docs that still reference '150 apps' to 162 to match the merged catalog (seed_data 150 + master 12 net-new)."
+  ],
+  "critical_code_review_comments": [
+    "maintenance.py: _as_json helper imports json inside the function (minor style). Not a bug.",
+    "maintenance.py register_maintenance_routes PUT /maintenance/{id} replaces the entire doc from the Maintenance pydantic model (fields default to blanks), so partial updates aren't supported — fine for the current all-fields PUT frontend behaviour.",
+    "server.py seed_master_mapping is idempotent (upsert on {product, cp_id, source=master}) and safe on restart.",
+    "server.py contingency_export sorts by (platform, name); 162 distinct apps now reflected; 'Has Contingency Plan' flag correct."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_maintenance.py (new)"
+  ],
+  "success_rate": {"backend": "100% (18/18 maintenance + regression tests)", "frontend": "100% of smoke flow — tab, list, create, builder sections, add-window, country picker, preview screen with Outlook + Copy buttons"},
+  "seed_data_creation": "Ephemeral maintenance docs created during each test are deleted in try/finally blocks; residual UI-created docs from the live frontend smoke were deleted post-run. Product/process/country catalogs were not mutated (no TEST_/QA_ pollution; products count remains 162).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "New backend tests at /app/backend/tests/test_maintenance.py cover the IT Maintenance module end-to-end plus master-mapping regressions. Current catalog baseline: 162 distinct products (150 seed + 12 master net-new, 1 overlap), 150+ contingency rows (37 original + 13 master upserts). The problem statement's '150 apps' is stale; use 162 going forward. Preview screen on web shows a WebView placeholder ('Email preview renders on the mobile app…') by design — ms-outlook:// deep link + rich HTML preview only work on a real device."
+}

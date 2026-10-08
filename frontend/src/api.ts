@@ -330,6 +330,15 @@ export interface Contingency {
   process: string;
   failed_system: string;
   owner: string;
+  // Rich fields present on IT Contingency Master Mapping rows (optional)
+  cp_id?: string;
+  procedure_name?: string;
+  procedure_link?: string;
+  cp_status?: string;
+  mapping_status?: string;
+  countries_scope?: string;
+  contingency_text?: string;
+  source?: string;
 }
 
 export async function fetchContingency(product: string): Promise<Contingency[]> {
@@ -363,3 +372,106 @@ export async function importExcel(uri: string, name: string): Promise<{
 }
 
 export const contingencyExportUrl = `${BASE}/contingency/export`;
+
+// ---------------------------------------------------------------------------
+// Maintenance (Planned Maintenance schedule emails)
+// ---------------------------------------------------------------------------
+export interface MaintWindow {
+  start: string;
+  end: string;
+  tz: string;
+  whenText: string;
+  title: string;
+  impact: "na" | "partial" | "noprod";
+  it: string;
+  bp: string;
+  co: string;
+  cp: string;
+  note: string;
+  high: boolean;
+}
+
+export interface Maintenance {
+  id: string;
+  heading: string;
+  intro: string;
+  fromDate: string;
+  toDate: string;
+  fzOn: boolean;
+  fzFrom: string;
+  fzTo: string;
+  fzTitle: string;
+  fzDesc: string;
+  dist: string;
+  countries: string[];
+  windows: MaintWindow[];
+  sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type MaintenanceInput = Omit<Maintenance, "id" | "sent_at" | "created_at" | "updated_at">;
+
+export function blankWindow(): MaintWindow {
+  return {
+    start: "", end: "", tz: "CET", whenText: "", title: "",
+    impact: "na", it: "", bp: "", co: "", cp: "", note: "", high: false,
+  };
+}
+
+export function useMaintenanceList() {
+  return useQuery({ queryKey: ["maintenance"], queryFn: () => api<Maintenance[]>("/maintenance") });
+}
+
+export function useMaintenance(id: string) {
+  return useQuery({
+    queryKey: ["maintenance", id],
+    queryFn: () => api<Maintenance>(`/maintenance/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useCreateMaintenance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Partial<MaintenanceInput>) =>
+      api<Maintenance>("/maintenance", { method: "POST", body: JSON.stringify(payload) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["maintenance"] }),
+  });
+}
+
+export function useUpdateMaintenance(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Partial<MaintenanceInput>) =>
+      api<Maintenance>(`/maintenance/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["maintenance"] });
+      qc.invalidateQueries({ queryKey: ["maintenance", id] });
+    },
+  });
+}
+
+export function useDeleteMaintenance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/maintenance/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["maintenance"] }),
+  });
+}
+
+export function useMarkMaintenanceSent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/maintenance/${id}/mark-sent`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["maintenance"] }),
+  });
+}
+
+export function fetchMaintenanceRender(id: string) {
+  return api<{ subject: string; to: string[]; body: string }>(`/maintenance/${id}/render`);
+}
+
+export function fetchMaintenanceHtml(id: string) {
+  return api<{ html: string }>(`/maintenance/${id}/render-html`);
+}

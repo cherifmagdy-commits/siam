@@ -1,6 +1,6 @@
 import { BlurView } from "expo-blur";
 import { Tabs } from "expo-router";
-import { Books, FileText, Warning } from "phosphor-react-native";
+import { Books, FileText, Warning, Wrench } from "phosphor-react-native";
 import { Platform, StyleSheet } from "react-native";
 
 import { usesNativeTabs } from "@/src/navigation";
@@ -21,6 +21,10 @@ export default function TabsLayout() {
         <NativeTabs.Trigger name="incidents">
           <NativeTabs.Trigger.Icon sf="exclamationmark.triangle" />
           <NativeTabs.Trigger.Label>Incidents</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="maintenance">
+          <NativeTabs.Trigger.Icon sf="wrench.and.screwdriver" />
+          <NativeTabs.Trigger.Label>Maintenance</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
         <NativeTabs.Trigger name="library">
           <NativeTabs.Trigger.Icon sf="books.vertical" />
@@ -74,6 +78,15 @@ export default function TabsLayout() {
           title: "Incidents",
           tabBarIcon: ({ color, focused }) => (
             <Warning size={24} color={color} weight={focused ? "fill" : "regular"} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="maintenance"
+        options={{
+          title: "Maintenance",
+          tabBarIcon: ({ color, focused }) => (
+            <Wrench size={24} color={color} weight={focused ? "fill" : "regular"} />
           ),
         }}
       />

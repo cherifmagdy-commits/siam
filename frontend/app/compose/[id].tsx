@@ -157,7 +157,15 @@ export default function ComposeScreen() {
     const candidates: [string, string][] = [];
     if (row.process) candidates.push(["business_process", row.process]);
     if (row.owner) candidates.push(["crisis_lead", row.owner]);
-    if (row.failed_system) candidates.push(["contingency", `Failed system: ${row.failed_system}`]);
+    // Master-mapping rows carry a composed contingency string (blank for gap apps);
+    // legacy rows fall back to their failed system.
+    const contingencyVal =
+      row.contingency_text !== undefined
+        ? row.contingency_text
+        : row.failed_system
+          ? `Failed system: ${row.failed_system}`
+          : "";
+    if (contingencyVal) candidates.push(["contingency", contingencyVal]);
     const locks = stateRef.current.validations;
     const apply = candidates.filter(([k]) => fieldSection[k] && !locks[fieldSection[k]]);
     if (!apply.length) return;
